@@ -1,12 +1,13 @@
 :root {
   --background: #e9e7e8;
-  --foreground: #2D2A32;
-  --accent: #7A2CFF;
-  --foreground_secondary: #6B6472;
-  --border: #6B6472;
+  --foreground: #2d2a32;
+  --accent: #7a2cff;
+  --foreground_secondary: #6b6472;
+  --border: #6b6472;
   --button__background: var(--accent);
   --button__foreground: var(--background);
   --page-width: 1200px;
+  --unit: 4px;
 }
 
 .mockup {
@@ -19,7 +20,7 @@
   opacity: 0.3;
   pointer-events: none;
   margin-left: 3px;
-  z-index: 999;III
+  z-index: 999;
 }
 
 html {
@@ -28,76 +29,92 @@ html {
   font-weight: 400;
   font-style: normal;
   letter-spacing: -0.03em;
-  font-size: 16px;
+  font-size: var;
   background-color: var(--background);
   min-height: 100vh;
 }
 
-main,
-header,
-footer {
-  max-width: var(--page-width);
-  margin: 0 auto;
-}
-
-main {
-  display: flex;
-  align-items: center;
-  padding-top: 64px;
-  /* grid-template-columns: 690px 1fr;
-  grid-template-rows: repeat(3, auto); */
-  /* gap: 40px; */
-}
-
-.mobile-letter {
-  display: none;
-}
-.skewed_letter {
-  transform: translateX(-114px);
-}
-.letter {
-  width: 595px;
-}
-.skewed_letter .letter {
-  aspect-ratio: 0.7;
-  /* position: absolute; */
-  /* left: 50%; */
-  /* top: 50%; */
-  /* transform: translateX(-50%) translateY(-50%) rotateZ(7.15deg); */
-  transform: rotateZ(7.15deg);
-  box-shadow: 0 10px 10px #00000033;
-}
-
-.content {
-  width: 690px;
-  flex-shrink: 0;
-  flex-grow: 0;
-  gap: 40px;
+body {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* =========================
+LAYOUT
+========================== */
+main {
+  display: grid;
+  gap: 40px;
+  grid-template-columns: 690px 1fr;
+  grid-template-rows: repeat(4, auto);
+  width: var(--page-width);
+}
+
+header {
+  grid-column: 1;
+  grid-row: 1;
+}
+.title {
+  grid-column: 1;
+  grid-row: 2;
+}
+.letter {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  position: relative;
+}
+.features {
+  grid-column: 1;
+  grid-row: 3;
+}
+.waitlist {
+  grid-column: 1;
+  grid-row: 4;
 }
 
 h1 {
-  font-size: 87px;
-  line-height: 87px;
+  font-size: 88px;
+  line-height: 1em;
   text-transform: uppercase;
   letter-spacing: 0.015em;
   font-weight: 900;
 }
 
-.ups_container {
+
+
+/* =========================
+LETTER
+========================== */
+.letter img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translateX(-50%) translateY(-50%) rotateZ(7.15deg);
+  box-shadow: 0 10px 10px #00000033;
+  transform-origin: center;
+  margin-left: -80px;
+}
+
+
+/* =========================
+FEATURES
+========================== */
+.features {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.ups {
+.feature {
   display: flex;
   flex-direction: column;
   gap: 4;
 }
 
-.ups--title {
+.feature--title {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -105,25 +122,84 @@ h1 {
   font-size: ;
 }
 
-
-input {
-  border: 1px solid #7C8496;
-  padding: 8px 12px;
-  border-radius: 6px;
-}
-
-input::placeholder {
-  color: var(--foreground_secondary);
-}
-
-button {
-  padding: 8px 12px;
+.waitlist-button {
+  text-decoration: none;
+  padding: 12px 16px;
   border-radius: 6px;
   border: 0 none;
   background-color: var(--button__background);
   color: var(--button__foreground);
+  display: block;
+  text-align: center;
+  width: 530px;
 }
 
+@media (max-width: 1200px), (max-height: 700px) {
+  :root {
+    --page-width: 90vw;
+  }
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: center;
+    padding: 24px 0;
+  }
+  h1 {
+    text-align: center;
+  }
+  .letter {
+    width: 100%;
+    margin-top: -60px;
+    box-shadow: 0 10px 10px #00000033;
+    display: flex;
+    overflow: hidden;
+    justify-content: center;
+    aspect-ratio: 0.75;
+    align-items: center;
+  }
+
+
+  .letter img {
+    position: static;
+    transform: none;
+    width: 96vw;
+    margin-left: auto;
+    box-shadow: none;
+    display: block;
+    aspect-ratio: 0.7;
+  }
+
+  .waitlist-button {
+    width: 100%;
+  }
+
+  .features {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  h1 {
+    font-size: 66px;
+  }
+  .letter {
+    margin-top: -50px;
+  }
+}
+
+@media (max-width: 570px) {
+  h1 {
+    font-size: 44px;
+  }
+  .letter {
+    margin-top: -42px;
+  }
+}
+
+
+
+/*
 .waitlist {
   width: 480px;
   max-width: 90vw;
@@ -141,8 +217,6 @@ button {
   flex-grow: 1;
 }
 
-
-
 small {
   font-size: 14px;
   font-weight: 300;
@@ -151,10 +225,12 @@ small {
   color: var(--foreground_secondary);
   display: block;
 }
+  */
 
-
+/*
 @media (max-width: 1200px) {
-  .skewed_letter, .ups_container {
+  .skewed_letter,
+  .ups_container {
     display: none;
   }
   .mobile-letter {
@@ -181,7 +257,6 @@ small {
   }
 }
 
-
 @media (max-width: 926px) {
   main {
     padding-top: 24px;
@@ -199,18 +274,4 @@ small {
     margin-top: -42px;
   }
 }
-
-
-.waitlist-button {
-  background-color: var(--button__background); /* Green */
-  border: none;
-  color: var(--button__foreground);
-  padding: 8px 12px;
-  text-align: center;
-  text-decoration: none;
-  display: inline-block;
-  font-size: 16px;
-  cursor: pointer;
-  border-radius: 6px;
-  text-decoration: none;
-}
+  /*
