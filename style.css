@@ -83,8 +83,6 @@ h1 {
   font-weight: 900;
 }
 
-
-
 /* =========================
 LETTER
 ========================== */
@@ -97,7 +95,6 @@ LETTER
   transform-origin: center;
   margin-left: -80px;
 }
-
 
 /* =========================
 FEATURES
@@ -119,7 +116,6 @@ FEATURES
   gap: 8px;
   align-items: center;
   font-weight: 700;
-  font-size: ;
 }
 
 .waitlist-button {
@@ -138,32 +134,35 @@ FEATURES
   :root {
     --page-width: 90vw;
   }
+  body {
+    justify-content: flex-start;
+  }
   main {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 12px;
     align-items: center;
-    padding: 24px 0;
+    padding: 12px 0 48px;
   }
   h1 {
     text-align: center;
   }
   .letter {
-    width: 100%;
-    margin-top: -60px;
+    width: 94vw;
+    margin-top: -46px;
     box-shadow: 0 10px 10px #00000033;
     display: flex;
     overflow: hidden;
     justify-content: center;
-    aspect-ratio: 0.75;
+    aspect-ratio: 0.8;
     align-items: center;
+    transform: rotateZ(1deg);
   }
-
 
   .letter img {
     position: static;
     transform: none;
-    width: 96vw;
+    width: 100vw;
     margin-left: auto;
     box-shadow: none;
     display: block;
@@ -184,7 +183,7 @@ FEATURES
     font-size: 66px;
   }
   .letter {
-    margin-top: -50px;
+    margin: -38px 0;
   }
 }
 
@@ -193,85 +192,6 @@ FEATURES
     font-size: 44px;
   }
   .letter {
-    margin-top: -42px;
+    margin: -30px 0 0px;
   }
 }
-
-
-
-/*
-.waitlist {
-  width: 480px;
-  max-width: 90vw;
-}
-
-.waitlist form {
-  display: flex;
-  width: 100%;
-  flex-wrap: nowrap;
-  flex-direction: row;
-  gap: 8px;
-  margin: 8px 0;
-}
-.waitlist input {
-  flex-grow: 1;
-}
-
-small {
-  font-size: 14px;
-  font-weight: 300;
-  letter-spacing: 0;
-  line-height: 20px;
-  color: var(--foreground_secondary);
-  display: block;
-}
-  */
-
-/*
-@media (max-width: 1200px) {
-  .skewed_letter,
-  .ups_container {
-    display: none;
-  }
-  .mobile-letter {
-    display: block;
-  }
-
-  .content {
-    margin: 0 auto;
-    align-items: center;
-    padding-bottom: 80px;
-  }
-  h1 {
-    text-align: center;
-  }
-  h1 span {
-    display: none;
-  }
-
-  .letter {
-    margin-top: -78px;
-    width: 700px;
-    box-shadow: 0 0 10px #00000033;
-    aspect-ratio: 0.7567567568;
-  }
-}
-
-@media (max-width: 926px) {
-  main {
-    padding-top: 24px;
-  }
-  .content {
-    width: 100vw;
-    gap: 20px;
-  }
-  h1 {
-    font-size: 48px;
-    line-height: 1em;
-  }
-  .letter {
-    max-width: 90vw;
-    margin-top: -42px;
-  }
-}
-  /*
