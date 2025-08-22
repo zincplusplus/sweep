@@ -32,6 +32,7 @@ html {
   font-size: var;
   background-color: var(--background);
   min-height: 100vh;
+  color: var(--foreground);
 }
 
 body {
@@ -75,6 +76,9 @@ header {
   grid-row: 4;
 }
 
+header img {
+  height: 36px;
+}
 h1 {
   font-size: 88px;
   line-height: 1em;
@@ -127,7 +131,7 @@ FEATURES
   color: var(--button__foreground);
   display: block;
   text-align: center;
-  width: 530px;
+  width: 555px;
 }
 
 @media (max-width: 1200px), (max-height: 700px) {
@@ -188,6 +192,9 @@ FEATURES
 }
 
 @media (max-width: 570px) {
+  header img {
+    height: 28px;
+  }
   h1 {
     font-size: 44px;
   }
