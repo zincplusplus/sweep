@@ -1,0 +1,22 @@
+:root {
+		--background: #e9e7e8;
+		--foreground: #2d2a32;
+		--accent: #7a2cff;
+		--foreground_secondary: #6b6472;
+		--border: #6b6472;
+		--button__background: var(--accent);
+		--button__foreground: var(--background);
+		--page-width: 1200px;
+		--unit: 4px;
+	}
+	body {
+		font-family: 'DM Sans', sans-serif;
+		font-optical-sizing: auto;
+		font-weight: 400;
+		font-style: normal;
+		letter-spacing: -0.03em;
+		font-size: var;
+		background-color: var(--background);
+		min-height: 100vh;
+		color: var(--foreground);
+	}

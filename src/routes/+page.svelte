@@ -25,7 +25,9 @@
 			href="https://docs.google.com/forms/d/e/1FAIpQLSeoXQfT0_KypaHIHRWWbRr5dplBGuCSZqDWbC1WNpSEIr5f3g/viewform?usp=sf_link"
 			target="_blank">Join Waitlist</a
 		>
-		<a class="access-button" href="./dashboard" rel="noopener noreferrer">I already have access</a>
+		<a class="access-button" href={`${base}/login`} rel="noopener noreferrer"
+			>I already have access</a
+		>
 	</section>
 
 	<section class="features">
