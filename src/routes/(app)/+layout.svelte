@@ -26,7 +26,7 @@
 </script>
 
 <svelte:head>
-	<link rel="stylesheet" href={`${base}/global.css`} />
+	<link rel="stylesheet" href={`./src/app.css`} />
 </svelte:head>
 
 {#if ready}
@@ -44,6 +44,3 @@
 	<!-- tiny skeleton -->
 	<main class="p-6 text-sm text-gray-500">Checking session…</main>
 {/if}
-
-<style global>
-</style>
