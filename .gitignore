@@ -1,53 +1,23 @@
-# --- macOS ---
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
 .DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# --- Node / JavaScript ---
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-package-lock.json
-yarn.lock
-.pnpm-debug.log
-
-# --- Build / Dist ---
-dist/
-build/
-out/
-.next/
-.nuxt/
-.svelte-kit/
-.vercel/
-.vite/
-coverage/
-tmp/
-temp/
-
-# --- Env / Config ---
+# Env
 .env
-.env.local
-.env.*.local
-*.env
+.env.*
+!.env.example
+!.env.test
 
-# --- Logs ---
-logs
-*.log
-*.gz
-
-# --- Editor / IDE ---
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# --- Other ---
-*.tsbuildinfo
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
