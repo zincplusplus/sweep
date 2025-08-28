@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { signInWithGmailMetadata } from '$lib/auth';
+	import { signInWithGmailModify } from '$lib/auth';
 	import { goto } from '$app/navigation';
 
 	let email = '';
@@ -9,7 +9,7 @@
 	async function login() {
 		try {
 			status = 'signing';
-			const { token } = await signInWithGmailMetadata(); // one popup, both scopes
+			const { token } = await signInWithGmailModify(); // one popup, both scopes
 			const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
 				headers: { Authorization: `Bearer ${token}` }
 			});

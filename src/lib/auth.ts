@@ -44,13 +44,13 @@ export function isTokenValid() {
 	return !!get(accessToken) && Date.now() < expiry;
 }
 
-/** One-shot: identity + gmail.metadata in a single popup (call from a click) */
-export function signInWithGmailMetadata(): Promise<{ token: string }> {
+/** One-shot: identity + gmail.modify in a single popup (call from a click) */
+export function signInWithGmailModify(): Promise<{ token: string }> {
 	return new Promise((resolve, reject) => {
 		// @ts-ignore
 		const tc = google.accounts.oauth2.initTokenClient({
 			client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-			scope: 'openid email https://www.googleapis.com/auth/gmail.metadata',
+			scope: 'openid email https://www.googleapis.com/auth/gmail.modify',
 			callback: (r: any) => {
 				setToken(r.access_token, r.expires_in);
 				resolve({ token: r.access_token });
@@ -78,7 +78,7 @@ export async function fetchAndCacheEmail() {
 
 /** Try to get a new token WITHOUT a popup (works if Google session + prior consent) */
 export function ensureTokenSilent(
-	scope = 'openid email https://www.googleapis.com/auth/gmail.metadata'
+	scope = 'openid email https://www.googleapis.com/auth/gmail.modify'
 ): Promise<boolean> {
 	if (isTokenValid()) return Promise.resolve(true);
 	return new Promise((resolve) => {

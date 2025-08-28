@@ -9,7 +9,7 @@
 
 	onMount(async () => {
 		// Try to restore from sessionStorage or silently mint a new token
-		const ok = await ensureTokenSilent();
+		const ok = await ensureTokenSilent('openid email https://www.googleapis.com/auth/gmail.modify');
 		if (!ok) {
 			const next = encodeURIComponent($page.url.pathname + $page.url.search);
 			goto(`/login?next=${next}`);
