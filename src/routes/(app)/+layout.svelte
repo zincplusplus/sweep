@@ -27,6 +27,8 @@
 
 <svelte:head>
 	<link rel="stylesheet" href={`./src/app.css`} />
+	<script src="https://apis.google.com/js/api.js"></script>
+	<script src="https://accounts.google.com/gsi/client"></script>
 </svelte:head>
 
 {#if ready}
