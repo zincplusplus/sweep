@@ -4,6 +4,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
+	import { Button } from '$lib/components/ui/button';
+	import { LogOut } from 'lucide-svelte';
 
 	let ready = false;
 
@@ -37,7 +39,10 @@
 		<div class="text-sm flex items-center gap-3">
 			{#if $userEmail}
 				<span>{$userEmail}</span>
-				<button class="border px-2 py-1 rounded" on:click={logout}>Sign out</button>
+				<Button variant="outline" size="sm" onclick={logout} class="gap-2">
+					<LogOut class="h-3 w-3" />
+					Sign out
+				</Button>
 			{/if}
 		</div>
 	</header>

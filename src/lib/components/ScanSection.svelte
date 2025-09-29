@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Scan, RotateCcw } from 'lucide-svelte';
+	import { Scan, RotateCcw, Check, CheckCircle, Circle } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { accessToken } from '$lib/auth';
 	import { get } from 'svelte/store';
@@ -285,6 +285,17 @@
 	}
 
 	async function startFreshScan() {
+		const confirmed = confirm(
+			"Start Fresh Scan?\n\n" +
+			"This will delete all existing email data and start the entire scanning process from scratch. " +
+			"This is a lengthy process that will re-scan your entire Gmail inbox and re-fetch all email details.\n\n" +
+			"Are you sure you want to continue?"
+		);
+
+		if (!confirmed) {
+			return;
+		}
+
 		console.log('🔄 Starting fresh scan - clearing all data...');
 		await emailDB.clearScanProgress();
 		await emailDB.clearAllEmails();
@@ -603,12 +614,10 @@
 			<div class="flex items-center">
 				{#if step1Complete}
 					<div class="p-1 bg-green-500 rounded-full">
-						<svg class="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-						</svg>
+						<Check class="h-3 w-3 text-white" />
 					</div>
 				{:else}
-					<div class="w-5 h-5 border-2 border-gray-300 rounded-full"></div>
+					<Circle class="h-5 w-5 text-gray-400" />
 				{/if}
 			</div>
 			<h3 class="font-medium text-black">Step 1: Find Emails</h3>
@@ -624,7 +633,7 @@
 		</div>
 		<div class="text-sm text-gray-600">
 			{#if step1Complete}
-				✅ Complete - Found {emailsFound} emails
+				Complete - Found {emailsFound} emails
 			{:else if step1Running}
 				{step1Progress}% - Found {emailsFound} emails so far
 			{:else}
@@ -639,12 +648,10 @@
 			<div class="flex items-center">
 				{#if step2Complete}
 					<div class="p-1 bg-green-500 rounded-full">
-						<svg class="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-						</svg>
+						<Check class="h-3 w-3 text-white" />
 					</div>
 				{:else}
-					<div class="w-5 h-5 border-2 border-gray-300 rounded-full"></div>
+					<Circle class="h-5 w-5 text-gray-400" />
 				{/if}
 			</div>
 			<h3 class="font-medium text-black">Step 2: Get Email Data</h3>
@@ -662,7 +669,7 @@
 			</div>
 			<div class="text-sm text-gray-600">
 				{#if step2Complete}
-					✅ Complete - Processed {emailsProcessed} emails
+					Complete - Processed {emailsProcessed} emails
 				{:else if step2Running}
 					{step2Progress}% - Processed {emailsProcessed} / {emailsFound} emails
 					{#if step2EstimatedTimeRemaining}
@@ -685,22 +692,21 @@
 				</Button>
 			{/if}
 
-			{#if emailsFound > 0 && !step1Complete}
-				<Button onclick={findNewEmails} variant="secondary">
-					Find New Emails
-				</Button>
-			{/if}
+			<Button onclick={findNewEmails} variant="secondary">
+				Grab New Emails
+			</Button>
+
+			<Button onclick={startFreshScan} variant="secondary" class="inline-flex items-center gap-2">
+				<RotateCcw class="h-4 w-4" />
+				Fresh Scan
+			</Button>
 		{/if}
 	</div>
 
 	{#if step1Complete && step2Complete}
 		<div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
 			<div class="flex items-center gap-3 text-green-800">
-				<div class="p-1 bg-green-500 rounded-full">
-					<svg class="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-						<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-					</svg>
-				</div>
+				<CheckCircle class="h-5 w-5 text-green-600" />
 				<span class="font-medium">Scan completed successfully!</span>
 			</div>
 			<div class="text-sm text-green-700 mt-2">
