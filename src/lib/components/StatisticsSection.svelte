@@ -6,7 +6,8 @@
 	// Reactive statistics data
 	let totalEmails = 0;
 	let newsletterEmails = 0;
-	let spaceSavings = 0; // GB
+	let spaceSavings = 0;
+	let spaceSavingsUnit = 'MB';
 
 	async function updateStatistics() {
 		try {
@@ -17,11 +18,21 @@
 			const allEmails = await emailDB.getAllEmails();
 
 			// Count newsletters (emails with List-Unsubscribe header)
-			newsletterEmails = allEmails.filter(email => email.hasListUnsubscribe).length;
+			const newsletters = allEmails.filter(email => email.listUnsubscribeValue);
+			newsletterEmails = newsletters.length;
 
-			// Calculate total space (sum of all sizeEstimate values)
-			const totalBytes = allEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
-			spaceSavings = Number((totalBytes / (1024 * 1024 * 1024)).toFixed(1)); // Convert to GB
+			// Calculate newsletter space only (sum of sizeEstimate for newsletters)
+			const newsletterBytes = newsletters.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
+
+			// Convert to appropriate unit (MB or GB)
+			const megabytes = newsletterBytes / (1024 * 1024);
+			if (megabytes >= 1024) {
+				spaceSavings = Number((megabytes / 1024).toFixed(1));
+				spaceSavingsUnit = 'GB';
+			} else {
+				spaceSavings = Number(megabytes.toFixed(1));
+				spaceSavingsUnit = 'MB';
+			}
 		} catch (error) {
 			console.error('Error updating statistics:', error);
 		}
@@ -71,7 +82,7 @@
 				<HardDrive class="h-5 w-5 text-gray-600" />
 			</div>
 		</div>
-		<div class="text-3xl font-bold text-black mb-1">{spaceSavings}GB</div>
+		<div class="text-3xl font-bold text-black mb-1">{spaceSavings}{spaceSavingsUnit}</div>
 		<div class="text-sm text-gray-600">Space You Could Save</div>
 	</div>
 </div>

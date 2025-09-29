@@ -7,8 +7,7 @@ export type EmailRecord = {
   subject?: string;
   date?: string;
   sizeEstimate?: number;   // size in bytes from Gmail API
-  hasListUnsubscribe?: boolean;  // true if List-Unsubscribe header exists
-  listUnsubscribeValue?: string; // actual unsubscribe header value
+  listUnsubscribeValue?: string; // actual unsubscribe header value (truthy = newsletter)
   scannedAt: number;       // when first discovered
   detailsFetchedAt?: number; // when details were added
 };
@@ -42,7 +41,7 @@ class EmailDB {
           const emailStore = db.createObjectStore('emails', { keyPath: 'id' });
           emailStore.createIndex('month', 'month', { unique: false });
           emailStore.createIndex('from', 'from', { unique: false });
-          emailStore.createIndex('hasListUnsubscribe', 'hasListUnsubscribe', { unique: false });
+          emailStore.createIndex('listUnsubscribeValue', 'listUnsubscribeValue', { unique: false });
         }
 
         // Create scan progress table
@@ -183,6 +182,56 @@ class EmailDB {
     });
   }
 
+  async getEmailsWithoutDetailsCount(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+      let count = 0;
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const email = cursor.value as EmailRecord;
+          if (!email.detailsFetchedAt) {
+            count++;
+          }
+          cursor.continue();
+        } else {
+          resolve(count);
+        }
+      };
+    });
+  }
+
+  async getEmailsWithDetailsCount(): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+      let count = 0;
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const email = cursor.value as EmailRecord;
+          if (email.detailsFetchedAt) {
+            count++;
+          }
+          cursor.continue();
+        } else {
+          resolve(count);
+        }
+      };
+    });
+  }
+
   async clearAllEmails(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
@@ -196,6 +245,33 @@ class EmailDB {
     });
   }
 
+  async getFirstEmailWithoutDetails(): Promise<EmailRecord | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const email = cursor.value as EmailRecord;
+          // Check if this email doesn't have details fetched yet
+          if (!email.detailsFetchedAt) {
+            resolve(email);
+            return;
+          }
+          cursor.continue();
+        } else {
+          // No more emails without details
+          resolve(null);
+        }
+      };
+    });
+  }
+
   async updateEmailWithDetails(
     id: string,
     details: {
@@ -204,7 +280,6 @@ class EmailDB {
       subject?: string;
       date?: string;
       sizeEstimate?: number;
-      hasListUnsubscribe?: boolean;
       listUnsubscribeValue?: string;
     }
   ): Promise<void> {
@@ -240,7 +315,6 @@ export function parseEmailDetails(gmailMessage: any) {
     subject: subjectHeader,
     date: dateHeader,
     sizeEstimate: gmailMessage.sizeEstimate,
-    hasListUnsubscribe: !!listUnsubscribeHeader,
     listUnsubscribeValue: listUnsubscribeHeader || undefined
   };
 }
