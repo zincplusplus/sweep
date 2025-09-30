@@ -271,54 +271,87 @@
 		step2StartTime = Date.now();
 		step2EstimatedTimeRemaining = '';
 
+		const BATCH_SIZE = 50; // Conservative batch size
+		const rateLimiter = new RateLimiter(5, 1000);
+		let totalProcessedCount = 0;
+
 		try {
-			const rateLimiter = new RateLimiter(5, 1000);
-			let processedCount = 0;
-
 			while (true) {
-				// Find next email without details
-				const emailWithoutDetails = await emailDB.getFirstEmailWithoutDetails();
+				// Get next batch of emails without details
+				const emailBatch = await emailDB.getEmailsWithoutDetails(BATCH_SIZE);
 
-				if (!emailWithoutDetails) {
+				if (emailBatch.length === 0) {
 					console.log('✅ Step 2 Complete - All emails have details');
 					break;
 				}
 
-				console.log(`📧 Processing email ${processedCount + 1}/${emailsNeedingData}: ${emailWithoutDetails.id}`);
+				console.log(`📧 Processing batch of ${emailBatch.length} emails (${totalProcessedCount + 1}-${totalProcessedCount + emailBatch.length} of ${emailsNeedingData})`);
 
-				// Fetch email details from Gmail API
-				const response = await rateLimiter.executeWithRetry(async () => {
+				// Start timing for rate limiting
+				const batchStartTime = Date.now();
+
+				// Create batch request
+				// @ts-ignore
+				const batch = gapi.client.newBatch();
+				const batchRequests: Record<string, string> = {}; // Maps batch ID to email ID
+
+				emailBatch.forEach((email, index) => {
+					const batchId = `email_${index}`;
+					batchRequests[batchId] = email.id;
+
 					// @ts-ignore
-					return await gapi.client.gmail.users.messages.get({
+					batch.add(gapi.client.gmail.users.messages.get({
 						userId: 'me',
-						id: emailWithoutDetails.id,
+						id: email.id,
 						format: 'metadata',
 						metadataHeaders: ['From', 'To', 'Subject', 'Date', 'List-Unsubscribe']
-					});
-				}, `Fetching email details for ${emailWithoutDetails.id}`);
+					}), { id: batchId });
+				});
 
-				// Parse email details (includes sizeEstimate)
-				const emailDetails = parseEmailDetails(response.result);
-				console.log('✨ Parsed details:', emailDetails);
+				// Execute batch request with rate limiting
+				const batchResults = await rateLimiter.executeWithRetry(async () => {
+					return await batch;
+				}, `Fetching batch of ${emailBatch.length} email details`);
 
-				// Update email in database
-				await emailDB.updateEmailWithDetails(emailWithoutDetails.id, emailDetails);
+				console.log('✨ Batch response received, processing results...');
+
+				// Process batch results
+				const updatePromises = [];
+				for (const [batchId, response] of Object.entries(batchResults.result)) {
+					const emailId = batchRequests[batchId];
+					if (emailId && response && response.result) {
+						const emailDetails = parseEmailDetails(response.result);
+						updatePromises.push(emailDB.updateEmailWithDetails(emailId, emailDetails));
+					} else {
+						console.warn(`Failed to get details for batch ID ${batchId}:`, response);
+					}
+				}
+
+				// Wait for all database updates to complete
+				await Promise.all(updatePromises);
 
 				// Update progress
-				processedCount++;
-				emailParsedCount++;
+				const batchProcessedCount = updatePromises.length;
+				totalProcessedCount += batchProcessedCount;
+				emailParsedCount += batchProcessedCount;
 
 				// Update time estimate
-				updateStep2TimeEstimate(processedCount);
+				updateStep2TimeEstimate(totalProcessedCount);
 
-				console.log(`💾 Saved email details. Progress: ${step2Progress}% (${emailParsedCount}/${emailFoundCount}) ${step2EstimatedTimeRemaining}`);
+				console.log(`💾 Saved ${batchProcessedCount} email details. Progress: ${step2Progress}% (${emailParsedCount}/${emailFoundCount}) ${step2EstimatedTimeRemaining}`);
 
-				// Small delay to prevent overwhelming the UI
-				await new Promise(resolve => setTimeout(resolve, 100));
+				// Rate limiting: ensure 1 second between batch starts
+				const elapsedTime = Date.now() - batchStartTime;
+				const remainingDelay = Math.max(0, 1000 - elapsedTime);
+				if (remainingDelay > 0) {
+					await new Promise(resolve => setTimeout(resolve, remainingDelay));
+				}
 			}
 
 		} catch (error) {
 			console.error('❌ Error in Step 2:', error);
+		} finally {
+			activelyScanning = false;
 		}
 	}
 

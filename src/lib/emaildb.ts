@@ -272,6 +272,33 @@ class EmailDB {
     });
   }
 
+  async getEmailsWithoutDetails(limit: number = 50): Promise<EmailRecord[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+      const emails: EmailRecord[] = [];
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor && emails.length < limit) {
+          const email = cursor.value as EmailRecord;
+          // Check if this email doesn't have details fetched yet
+          if (!email.detailsFetchedAt) {
+            emails.push(email);
+          }
+          cursor.continue();
+        } else {
+          // Reached limit or no more emails
+          resolve(emails);
+        }
+      };
+    });
+  }
+
   async updateEmailWithDetails(
     id: string,
     details: {
