@@ -1,34 +1,83 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Scan, RotateCcw, Check, CheckCircle, Circle } from 'lucide-svelte';
+	import { Scan, RotateCcw, Check, CircleCheck, Circle } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { accessToken } from '$lib/auth';
 	import { get } from 'svelte/store';
-	import { emailDB, type EmailRecord, isScanComplete, getLastMonthWithData, parseEmailDetails } from '$lib/emaildb';
+	import { emailDB, type EmailRecord, getLastMonthWithData, parseEmailDetails } from '$lib/emaildb';
 
 	// Overall scanning state
 	let gmailInitialized = false;
-	let canResume = false;
-	let savedProgress: any = null;
+
+	let emailFoundCount = 0;
+	let emailParsedCount = 0;
+	let lastMonthIndexed:String|null = null;
+	let currentStep = 0;
+	const stepLabes = ['Not Started', 'Find Emails', 'Get Email Data', 'Complete'];
+	let activelyScanning = false;
+
+	function lastIndexedMonthInPast() {
+		if (!lastMonthIndexed) return false;
+		const [year, month] = lastMonthIndexed.split('/').map(Number);
+		const today = new Date();
+		const thisYear = today.getFullYear();
+		const thisMonth = today.getMonth() + 1; // getMonth() is 0-indexed
+		const result = year < thisYear || (year === thisYear && month < thisMonth);
+		return result;
+	};
+
+
+
+
+	// const scanInProgressKey = 'scanInProgress';
+	// let isScanInProgress = false;
+
+	// const lastScannedMonthKey = 'lastScannedMonth';
+	// let lastScannedMonth: string | null = null;
+
+
+	// let emailFoundCount = 0;
+	// let emailCountParsed = 0;
+	// $: hasNeverScanned = !isScanInProgress && emailFoundCount === 0;
+	// $: currentStep = (() => {
+	// 	console.log(isScanInProgress, emailFoundCount, emailCountParsed, lastScaIndexednthInPast);
+	// 	if(!isScanInProgress) return 0;
+	// 	if(IndexedountFound > 0 && lastScannedMonthInPast) return 1;
+	// 	if(emailCountParsed < emailFoundCount) return 2;
+	// 	return 3;
+	// })();
+	// const stepLabes = ['Not Started', 'Find Emails', 'Get Email Data', 'Complete'];
+
+
+	// let savedProgress: any = null;
 
 	// Step 1: Find Emails (ID collection)
-	let step1Complete = false;
-	let step1Progress = 0;
-	let step1Running = false;
+	$: step1Complete = currentStep > 1;
+	$: step1Running = currentStep === 1 && activelyScanning;
 	let currentProcessingMonth = '';
-	let emailsFound = 0;
+		$: step1Progress = () => {
+		if(!lastMonthIndexed) return 0;
+		const [lastYear, lastMonth] = lastMonthIndexed.split('/').map(Number);
+		const startYear = 2004;
+		const startMonth = 4;
+		const today = new Date();
+		const endYear = today.getFullYear();
+		const endMonth = today.getMonth() + 1;
+		const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth + 1);
+		const completedMonths = (lastYear - startYear) * 12 + (lastMonth - startMonth + 1);
+		return Math.round((completedMonths / totalMonths) * 100);
+	};
 
 	// Step 2: Get Email Data (details fetching)
-	let step2Complete = false;
-	let step2Progress = 0;
-	let step2Running = false;
-	let emailsNeedingData = 0;
-	let emailsProcessed = 0;
+	$: step2Complete = currentStep > 2;
+	$: step2Running = currentStep === 2 && activelyScanning;
+	$: emailsNeedingData = emailFoundCount - emailParsedCount;
+	$: step2Progress = emailFoundCount === 0 ? 0 : Math.round((emailParsedCount / emailFoundCount) * 100);
 	let step2StartTime = 0;
 	let step2EstimatedTimeRemaining = '';
 
 	// Current active step (1 or 2)
-	let currentStep = 1;
+	// let currentStep = 1;
 
 	// Rate limiter class
 	class RateLimiter {
@@ -71,91 +120,107 @@
 	async function checkScanStatus() {
 		console.log('🔍 Checking scan status...');
 
+		// 1: load some data
+		// - look in localStorage and see if there is a flaged for scan in progress
+		// - look in db and see if there are any emails, and if yes what is the most recent month indexed
+
+		// 2. if there is a flag for scan in progress, check what is the last month scanned
+		// - if it's this month then mark step 1 as complete
+		// - if it's not this month then mark step 1 as incomplete and set current month to last month scanned + 1
+		// if there is no flag, but the current month is not this month then mark as needs update
+
+		// 3. if the most recent month is this month, check how many emails have details
+		// - if all have details then mark step 2 as complete
+		// - if some are missing details then mark step 2 as incomplete and set progress accordingly
+
+		emailFoundCount = await emailDB.getEmailCount();
+		emailParsedCount = await emailDB.getEmailsWithDetailsCount();
+		lastMonthIndexed = await getLastMonthWithData();
+
+		if (emailFoundCount === 0 ) {
+			currentStep = 0;
+		} else if(lastIndexedMonthInPast()) {
+			currentStep = 1;
+		}else if(emailParsedCount < emailFoundCount) {
+			currentStep = 2;
+		} else {
+			currentStep = 3;
+		}
+		console.log('🐛 currentStep', currentStep, stepLabes[currentStep])
+
+		// isScanInProgress = localStorage.getItem(scanInProgressKey) === 'true';
+		// lastScannedMonth = localStorage.getItem(lastScannedMonthKey) || null;
+		// emailFoundCount = await emailDB.getEmailCount();
+
+		// console.log('🐛 isScanInProgress:', isScanInProgress);
+		console.log('🐛 Emails:', emailFoundCount);
+		// console.log('🐛 hasNeverScanned:', hasNeverScanned);
+		// console.log('🐛 currentStep:', currentStep, stepLabes[currentStep]);
+		console.log('🐛 lastMonthIndexed:', lastMonthIndexed);
+		console.log('🐛 lastIndexedMonthInPast:', lastIndexedMonthInPast());
+
+		// if(isScanInProgress && emailFoundCount === 0) {
+		// 	console.log('⚠️ Scan was in progress but no emails found - starting fresh scan');
+		// 	localStorage.removeItem(scanInProgressKey);
+		// 	isScanInProgress = false;
+		// }
+
+		/*
+
+		// const today = new Date();
+		// const thisYear = today.getFullYear();
+		// const thisMonth = today.getMonth() + 1; // getMonth() is 0-indexed
+
+
+		//1. get all the email ids, check the most recent month
+		// - if the recent month is this month
+		//2. check how many have details
+
 		// Get counts
-		emailsFound = await emailDB.getEmailCount();
-		emailsProcessed = await emailDB.getEmailsWithDetailsCount();
+		emailFoundCount = await emailDB.getEmailCount();
+		emailParsedCount = await emailDB.getEmailsWithDetailsCount();
 		emailsNeedingData = await emailDB.getEmailsWithoutDetailsCount();
 
 		console.log('📊 Current counts:', {
-			emailsFound,
-			emailsProcessed,
-			emailsNeedingData
+		emailFoundCount,
+		emailParsedCount,
+		emailsNeedingData
 		});
 
 		// Check Step 1 status
 		savedProgress = await emailDB.loadScanProgress();
 		const scanComplete = await isScanComplete();
 
-		if (scanComplete && emailsFound > 0) {
-			step1Complete = true;
-			step1Progress = 100;
-			currentStep = 2;
+		if (scanComplete && emailFoundCount > 0) {
+		step1Progress = 100;
+		currentStep = 2;
 		} else if (savedProgress) {
-			canResume = true;
-			// Calculate Step 1 progress
-			const [lastYear, lastMonth] = savedProgress.lastSuccessfulMonth.split('/').map(Number);
-			const startYear = 2004;
-			const startMonth = 4;
-			const today = new Date();
-			const endYear = today.getFullYear();
-			const endMonth = today.getMonth() + 1;
-			const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth + 1);
-			const completedMonths = (lastYear - startYear) * 12 + (lastMonth - startMonth + 1);
-			step1Progress = Math.round((completedMonths / totalMonths) * 100);
-			currentStep = 1;
+		// Calculate Step 1 progress
+		const [lastYear, lastMonth] = savedProgress.lastSuccessfulMonth.split('/').map(Number);
+		const startYear = 2004;
+		const startMonth = 4;
+		const today = new Date();
+		const endYear = today.getFullYear();
+		const endMonth = today.getMonth() + 1;
+		const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth + 1);
+		const completedMonths = (lastYear - startYear) * 12 + (lastMonth - startMonth + 1);
+		step1Progress = Math.round((completedMonths / totalMonths) * 100);
+		currentStep = 1;
 		}
 
 		// Check Step 2 status
-		if (emailsFound > 0) {
-			if (emailsNeedingData === 0) {
-				step2Complete = true;
-				step2Progress = 100;
-			} else {
-				step2Progress = Math.round((emailsProcessed / emailsFound) * 100);
-			}
+		if (emailFoundCount > 0) {
+		if (emailsNeedingData === 0) {
+
+		} else {
+
 		}
-
-		console.log('📈 Scan status:', {
-			step1Complete,
-			step1Progress,
-			step2Complete,
-			step2Progress,
-			currentStep,
-			canResume
-		});
-	}
-
-	function getMainButtonState() {
-		// Case 1: Database is empty - Start Scan
-		if (emailsFound === 0 && !step1Running && !step2Running) {
-			return {
-				text: 'Start Scan',
-				action: () => {
-					step1Running = true;
-					currentStep = 1;
-					startStep1();
-				}
-			};
 		}
-
-		// Case 2: Mid-process (either step 1 or step 2 incomplete) - Resume Scan
-		if ((!step1Complete || !step2Complete) && !step1Running && !step2Running) {
-			return {
-				text: 'Resume Scan',
-				action: resumeScan
-			};
-		}
-
-		// Case 3: Everything complete - New Scan
-		if (step1Complete && step2Complete) {
-			return {
-				text: 'New Scan',
-				action: startFreshScan
-			};
-		}
-
-		// Default case (scanning in progress) - no button
-		return null;
+		*/
+		// console.log('📈 Scan status:', {
+		// 	step1Progress,
+		// 	currentStep,
+		// });
 	}
 
 	function formatTimeEstimate(totalSeconds) {
@@ -183,6 +248,7 @@
 
 		if (emailsPerSecond > 0 && remainingEmails > 0) {
 			const estimatedSecondsRemaining = remainingEmails / emailsPerSecond;
+		// TODO This is not accurate and runs out 1 minute sooner at least
 			step2EstimatedTimeRemaining = `~${formatTimeEstimate(estimatedSecondsRemaining)} remaining`;
 		} else {
 			step2EstimatedTimeRemaining = '';
@@ -200,8 +266,8 @@
 
 	async function startStep2() {
 		console.log('🚀 Starting Step 2: Get Email Data...');
-		step2Running = true;
 		currentStep = 2;
+		activelyScanning = true;
 		step2StartTime = Date.now();
 		step2EstimatedTimeRemaining = '';
 
@@ -215,9 +281,6 @@
 
 				if (!emailWithoutDetails) {
 					console.log('✅ Step 2 Complete - All emails have details');
-					step2Complete = true;
-					step2Progress = 100;
-					step2Running = false;
 					break;
 				}
 
@@ -243,13 +306,12 @@
 
 				// Update progress
 				processedCount++;
-				emailsProcessed = processedCount + (emailsFound - emailsNeedingData);
-				step2Progress = Math.round((emailsProcessed / emailsFound) * 100);
+				emailParsedCount++;
 
 				// Update time estimate
 				updateStep2TimeEstimate(processedCount);
 
-				console.log(`💾 Saved email details. Progress: ${step2Progress}% (${emailsProcessed}/${emailsFound}) ${step2EstimatedTimeRemaining}`);
+				console.log(`💾 Saved email details. Progress: ${step2Progress}% (${emailParsedCount}/${emailFoundCount}) ${step2EstimatedTimeRemaining}`);
 
 				// Small delay to prevent overwhelming the UI
 				await new Promise(resolve => setTimeout(resolve, 100));
@@ -257,7 +319,6 @@
 
 		} catch (error) {
 			console.error('❌ Error in Step 2:', error);
-			step2Running = false;
 		}
 	}
 
@@ -286,10 +347,10 @@
 
 	async function startFreshScan() {
 		const confirmed = confirm(
-			"Start Fresh Scan?\n\n" +
-			"This will delete all existing email data and start the entire scanning process from scratch. " +
-			"This is a lengthy process that will re-scan your entire Gmail inbox and re-fetch all email details.\n\n" +
-			"Are you sure you want to continue?"
+		"Start Fresh Scan?\n\n" +
+		"This will delete all existing email data and start the entire scanning process from scratch. " +
+		"This is a lengthy process that will re-scan your entire Gmail inbox and re-fetch all email details.\n\n" +
+		"Are you sure you want to continue?"
 		);
 
 		if (!confirmed) {
@@ -297,23 +358,10 @@
 		}
 
 		console.log('🔄 Starting fresh scan - clearing all data...');
-		await emailDB.clearScanProgress();
 		await emailDB.clearAllEmails();
 
 		// Reset all state
-		canResume = false;
-		savedProgress = null;
-		step1Complete = false;
-		step1Progress = 0;
-		step2Complete = false;
-		step2Progress = 0;
-		emailsFound = 0;
-		emailsProcessed = 0;
-		emailsNeedingData = 0;
-		currentStep = 1;
-
-		// Start Step 1
-		step1Running = true;
+		emailFoundCount = 0;
 		startStep1();
 	}
 
@@ -332,35 +380,18 @@
 		// Parse the last month to start from
 		const [lastYear, lastMonthNum] = lastMonth.split('/').map(Number);
 
-		// Clear any existing scan progress since we're doing an update
-		await emailDB.clearScanProgress();
-
-		// Start Step 1 from the last month we have data for
-		step1Running = true;
-		currentStep = 1;
-		step1Complete = false;
 		startStep1FromMonth(lastYear, lastMonthNum);
-	}
-
-	async function resumeScan() {
-		console.log('▶️ Resuming scan...');
-
-		if (currentStep === 1 && !step1Complete) {
-			step1Running = true;
-			startStep1();
-		} else if (currentStep === 2 && !step2Complete) {
-			step2Running = true;
-			startStep2();
-		}
 	}
 
 	async function startStep1() {
 		console.log('🚀 Starting Step 1: Find Emails...');
-		startStep1FromMonth(2004, 4);
+		startStep1FromMonth(2004, 4); // when Gmail launched
 	}
 
 	async function startStep1FromMonth(startYear: number, startMonth: number) {
 		console.log(`🔍 Starting Step 1 from ${startYear}/${startMonth}...`);
+		activelyScanning = true;
+		currentStep = 1;
 
 		// Use today's date for end point
 		const today = new Date();
@@ -368,26 +399,27 @@
 		const endMonth = today.getMonth() + 1; // getMonth() returns 0-11, so add 1
 
 		// Check for existing scan progress
-		const savedProgress = await emailDB.loadScanProgress();
+		const lastIndexedMonth = await getLastMonthWithData();
+		console.log('🐛 Last indexed month:', lastIndexedMonth);
 		let currentYear = startYear;
 		let currentMonth = startMonth;
 		let monthsCompleted = 0;
 
-		if (savedProgress) {
-			const [lastYear, lastMonth] = savedProgress.lastSuccessfulMonth.split('/').map(Number);
-			currentYear = lastYear;
-			currentMonth = lastMonth + 1; // Resume from next month
+		// if (savedProgress) {
+		// 	const [lastYear, lastMonth] = savedProgress.lastSuccessfulMonth.split('/').map(Number);
+		// 	currentYear = lastYear;
+		// 	currentMonth = lastMonth + 1; // Resume from next month
 
-			// Handle year rollover
-			if (currentMonth > 12) {
-				currentMonth = 1;
-				currentYear++;
-			}
+		// 	// Handle year rollover
+		// 	if (currentMonth > 12) {
+		// 		currentMonth = 1;
+		// 		currentYear++;
+		// 	}
 
-			// Calculate months already completed
-			monthsCompleted = (lastYear - startYear) * 12 + (lastMonth - startMonth + 1);
-			console.log(`Resuming scan from ${currentYear}/${currentMonth}, ${monthsCompleted} months already completed`);
-		}
+		// 	// Calculate months already completed
+		// 	monthsCompleted = (lastYear - startYear) * 12 + (lastMonth - startMonth + 1);
+		// 	console.log(`Resuming scan from ${currentYear}/${currentMonth}, ${monthsCompleted} months already completed`);
+		// }
 
 		// Calculate total months to scan
 		const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth + 1);
@@ -427,7 +459,7 @@
 					console.log(`Added ${newEmails.length} new emails to database`);
 
 					// Update email count immediately after adding
-					emailsFound += newEmails.length;
+					emailFoundCount += newEmails.length;
 				}
 
 				// Update UI state
@@ -443,11 +475,15 @@
 					const progressPercent = Math.round((monthsCompleted / totalMonths) * 100);
 					console.log(`Finished ${currentYear}/${currentMonth}, moving to next month (${progressPercent}% done - ${monthsCompleted}/${totalMonths} months)`);
 
+					lastMonthIndexed = `${currentYear}/${currentMonth}`;
+
 					// Save progress after completing a month
-					await emailDB.saveScanProgress(`${currentYear}/${currentMonth}`);
+					// let month = `${currentYear}/${currentMonth}`
+					// localStorage.setItem(lastScannedMonthKey, month);
+					// lastScannedMonth = month;
 
 					// Update UI progress
-					step1Progress = progressPercent;
+					// step1Progress = progressPercent;
 
 					currentPageToken = undefined;
 					currentMonth++;
@@ -471,33 +507,20 @@
 			console.log(`First email received in: ${firstEmailMonth || 'No emails found'}`);
 
 			// Update Step 1 state
-			step1Running = false;
-			step1Complete = true;
-			step1Progress = 100;
-			emailsFound = finalEmailCount;
+			emailFoundCount = finalEmailCount;
 			currentStep = 2;
-
-			// Clear scan progress on completion
-			await emailDB.clearScanProgress();
-			canResume = false;
-
-			// Update counts for Step 2
-			await checkScanStatus();
 
 			console.log(`🔄 Step 1 complete. Auto-starting Step 2 with ${emailsNeedingData} emails needing data...`);
 
 			// Automatically start Step 2
 			if (emailsNeedingData > 0) {
-				step2Running = true;
 				startStep2();
 			} else {
 				console.log('✅ All emails already have details - Step 2 not needed');
 				step2Complete = true;
-				step2Progress = 100;
 			}
 		} catch (error) {
 			console.error('❌ Error during Step 1:', error);
-			step1Running = false;
 		}
 		// isScanning = true;
 		// scanProgress = 0;
@@ -608,36 +631,48 @@
 		</div>
 	</div>
 
+	{#if currentStep === 3}
+	<div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg mb-4">
+		<div class="flex items-center gap-3 text-green-800">
+			<CircleCheck class="h-5 w-5 text-green-600" />
+			<span class="font-medium">Scan completed successfully!</span>
+		</div>
+		<div class="text-sm text-green-700 mt-2">
+			Found and processed {emailFoundCount} emails with full details including size estimates and unsubscribe headers.
+		</div>
+	</div>
+	{:else}
 	<!-- Step 1: Find Emails -->
 	<div class="border rounded-lg p-4 mb-4 bg-gray-50">
-		<div class="flex items-center gap-3 mb-3">
+		<div class="flex items-center gap-3">
 			<div class="flex items-center">
 				{#if step1Complete}
-					<div class="p-1 bg-green-500 rounded-full">
-						<Check class="h-3 w-3 text-white" />
-					</div>
+				<div class="p-1 bg-green-500 rounded-full">
+					<Check class="h-3 w-3 text-white" />
+				</div>
 				{:else}
-					<Circle class="h-5 w-5 text-gray-400" />
+				<Circle class="h-5 w-5 text-gray-400" />
 				{/if}
 			</div>
 			<h3 class="font-medium text-black">Step 1: Find Emails</h3>
 			{#if step1Running}
-				<div class="animate-spin">
-					<Scan class="h-4 w-4 text-black" />
-				</div>
-				<span class="text-sm text-gray-600">Processing {currentProcessingMonth}</span>
+			<div class="animate-spin">
+				<Scan class="h-4 w-4 text-black" />
+			</div>
+			<span class="text-sm text-gray-600">Processing {currentProcessingMonth}</span>
 			{/if}
 		</div>
-		<div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-			<div class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: {step1Progress}%"></div>
+		<div class="w-full bg-gray-200 rounded-full h-2 mb-2 mt-3">
+			<div class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width:
+			{step1Progress()}%"></div>
 		</div>
 		<div class="text-sm text-gray-600">
-			{#if step1Complete}
-				Complete - Found {emailsFound} emails
-			{:else if step1Running}
-				{step1Progress}% - Found {emailsFound} emails so far
+			{#if currentStep > 1}
+			Complete - Found {emailFoundCount} emails
+			{:else if currentStep === 1}
+			{step1Progress()}% - Found {emailFoundCount} emails so far. Last processed month: {lastMonthIndexed}
 			{:else}
-				Ready to scan for email IDs
+			Ready to scan for email IDs
 			{/if}
 		</div>
 	</div>
@@ -647,31 +682,31 @@
 		<div class="flex items-center gap-3 {step1Complete ? 'mb-3' : ''}">
 			<div class="flex items-center">
 				{#if step2Complete}
-					<div class="p-1 bg-green-500 rounded-full">
-						<Check class="h-3 w-3 text-white" />
-					</div>
+				<div class="p-1 bg-green-500 rounded-full">
+					<Check class="h-3 w-3 text-white" />
+				</div>
 				{:else}
-					<Circle class="h-5 w-5 text-gray-400" />
+				<Circle class="h-5 w-5 text-gray-400" />
 				{/if}
 			</div>
 			<h3 class="font-medium text-black">Step 2: Get Email Data</h3>
 			{#if step2Running}
-				<div class="animate-spin">
-					<Scan class="h-4 w-4 text-black" />
-				</div>
-				<span class="text-sm text-gray-600">Fetching details...</span>
+			<div class="animate-spin">
+				<Scan class="h-4 w-4 text-black" />
+			</div>
+			<span class="text-sm text-gray-600">Fetching details...</span>
 			{/if}
 		</div>
 
 		{#if step1Complete}
 			<div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-				<div class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: {step2Progress}%"></div>
+				<div class="bg-blue-500 h-2 rounded-full transition-all duration-300" style="width: {step2Progress}%"></div>
 			</div>
 			<div class="text-sm text-gray-600">
 				{#if step2Complete}
-					Complete - Processed {emailsProcessed} emails
-				{:else if step2Running}
-					{step2Progress}% - Processed {emailsProcessed} / {emailsFound} emails
+					Complete - Processed {emailParsedCount} emails
+				{:else if currentStep === 2}
+					{step2Progress}% - Processed {emailParsedCount} / {emailFoundCount} emails
 					{#if step2EstimatedTimeRemaining}
 						<br><span class="text-blue-600">{step2EstimatedTimeRemaining}</span>
 					{/if}
@@ -681,37 +716,34 @@
 			</div>
 		{/if}
 	</div>
+	{/if}
 
 	<!-- Control Buttons -->
 	<div class="flex gap-2">
-		{#if !step1Running && !step2Running}
-			{@const mainButton = getMainButtonState()}
-			{#if mainButton}
-				<Button onclick={mainButton.action} variant="default">
-					{mainButton.text}
-				</Button>
-			{/if}
-
-			<Button onclick={findNewEmails} variant="secondary">
-				Grab New Emails
+		{#if currentStep === 1}
+			<Button onclick={findNewEmails} variant="default" disabled={step1Running}>
+				Find latest emails
 			</Button>
-
-			<Button onclick={startFreshScan} variant="secondary" class="inline-flex items-center gap-2">
+		{:else if currentStep === 2}
+			<Button onclick={startStep2} variant="default" disabled={step2Running}>
+				Get email data
+			</Button>
+		{:else if currentStep === 3}
+			<Button onclick={startFreshScan} variant="default" class="inline-flex items-center gap-2">
 				<RotateCcw class="h-4 w-4" />
-				Fresh Scan
+				Fresh scan
+			</Button>
+		{:else}
+			<Button onclick={startStep1} variant="default">
+				Start Scan
 			</Button>
 		{/if}
-	</div>
 
-	{#if step1Complete && step2Complete}
-		<div class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-			<div class="flex items-center gap-3 text-green-800">
-				<CheckCircle class="h-5 w-5 text-green-600" />
-				<span class="font-medium">Scan completed successfully!</span>
-			</div>
-			<div class="text-sm text-green-700 mt-2">
-				Found and processed {emailsFound} emails with full details including size estimates and unsubscribe headers.
-			</div>
-		</div>
-	{/if}
+		{#if currentStep !== 3}
+		<Button onclick={startFreshScan} variant="secondary" class="inline-flex items-center gap-2">
+			<RotateCcw class="h-4 w-4" />
+			Fresh Scan
+		</Button>
+		{/if}
+	</div>
 </div>
