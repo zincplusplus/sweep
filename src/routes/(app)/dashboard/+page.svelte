@@ -683,10 +683,19 @@
 				hour12: true
 			});
 		} else {
-			return emailDate.toLocaleDateString('en-US', {
-				month: 'short',
-				day: 'numeric'
-			});
+			// Check if it's this year
+			if (emailDate.getFullYear() === today.getFullYear()) {
+				return emailDate.toLocaleDateString('en-US', {
+					month: 'short',
+					day: 'numeric'
+				});
+			} else {
+				return emailDate.toLocaleDateString('en-US', {
+					month: 'short',
+					day: 'numeric',
+					year: 'numeric'
+				});
+			}
 		}
 	}
 
@@ -1526,7 +1535,7 @@
 						<div class="w-48 flex-shrink-0">Sender</div>
 						<div class="min-w-0 flex-1">Subject</div>
 						<div class="w-20 flex-shrink-0 text-center">Size</div>
-						<div class="w-20 flex-shrink-0 text-right">Date</div>
+						<div class="w-32 flex-shrink-0 text-right">Date</div>
 					</div>
 				</div>
 
@@ -1575,7 +1584,7 @@
 											<div class="w-20 flex-shrink-0 text-center text-gray-600">
 												{formatSizeInMB(item.totalSize)}
 											</div>
-											<div class="w-20 flex-shrink-0 text-right text-gray-600">
+											<div class="w-32 flex-shrink-0 text-right text-gray-600">
 												<!-- Empty space to align with date column -->
 											</div>
 										</div>
@@ -1618,7 +1627,7 @@
 												{formatSizeInMB(item.email.sizeEstimate)}
 											</div>
 											<div
-												class="w-20 flex-shrink-0 text-right text-gray-600"
+												class="w-32 flex-shrink-0 text-right text-gray-600"
 												onclick={() => openEmailInGmail(item.email.id)}
 											>
 												{formatDate(item.email.date)}
