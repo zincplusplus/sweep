@@ -18,7 +18,62 @@
 	let expandedGroups = new Set<string>(); // Track which groups are expanded
 	let selectedEmails = new Set<string>(); // Track selected individual emails
 	let selectedGroups = new Set<string>(); // Track groups with all emails selected
+	// Track emails queued for review - loaded from IndexedDB
+	let reviewQueue = new Set<string>(); // Will be loaded from IndexedDB
+	let reviewQueueLoaded = false; // Track if review queue has been loaded
 	let loading = true;
+
+	// Migrate localStorage review queue to IndexedDB (one-time migration)
+	async function migrateLocalStorageToIndexedDB() {
+		try {
+			const storedLocalStorage = localStorage.getItem('sweep.reviewQueue');
+			if (storedLocalStorage) {
+				const emailIds = JSON.parse(storedLocalStorage);
+				if (Array.isArray(emailIds) && emailIds.length > 0) {
+					console.log('Migrating', emailIds.length, 'emails from localStorage to IndexedDB');
+					const { emailDB } = await import('$lib/emaildb');
+					await emailDB.setReviewQueue(emailIds);
+					// Remove from localStorage after successful migration
+					localStorage.removeItem('sweep.reviewQueue');
+					console.log('Migration completed, localStorage cleaned up');
+					return emailIds;
+				}
+			}
+		} catch (error) {
+			console.warn('Failed to migrate localStorage data:', error);
+		}
+		return null;
+	}
+
+	// Load review queue from IndexedDB
+	async function loadReviewQueueFromDB() {
+		try {
+			const { emailDB } = await import('$lib/emaildb');
+
+			// First, try to migrate any existing localStorage data
+			const migratedData = await migrateLocalStorageToIndexedDB();
+
+			// Then load from IndexedDB
+			const emailIds = migratedData || await emailDB.getReviewQueue();
+			reviewQueue = new Set(emailIds);
+			reviewQueueLoaded = true;
+			console.log('Loaded review queue from IndexedDB:', emailIds.length, 'emails');
+		} catch (error) {
+			console.warn('Failed to load review queue from IndexedDB:', error);
+			reviewQueue = new Set();
+			reviewQueueLoaded = true;
+		}
+	}
+
+	// Save review queue to IndexedDB
+	async function saveReviewQueueToDB() {
+		try {
+			const { emailDB } = await import('$lib/emaildb');
+			await emailDB.setReviewQueue(Array.from(reviewQueue));
+		} catch (error) {
+			console.warn('Failed to save review queue to IndexedDB:', error);
+		}
+	}
 	let smartFiltersData: any[] = [];
 	let filterResults: any = {}; // Store all filter calculation results
 	let totalEmailCount = 0;
@@ -29,6 +84,75 @@
 	// Calculate percentages of emails and size shown vs total
 	$: emailPercentage = totalEmailCount > 0 ? ((filteredEmails.length / totalEmailCount) * 100) : 0;
 	$: sizePercentage = totalSizeMB > 0 ? ((filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024)) / totalSizeMB * 100) : 0;
+
+	// Calculate sidebar display values excluding review queue (only when loaded)
+	$: inboxSizeMB = reviewQueueLoaded ? allEmails.filter(email => !reviewQueue.has(email.id)).reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024) : 0;
+
+	// Calculate review queue size (only when loaded)
+	$: reviewQueueSizeMB = reviewQueueLoaded ? allEmails.filter(email => reviewQueue.has(email.id)).reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024) : 0;
+
+	// Calculate filter sizes excluding review queue (only when loaded)
+	$: filterSizesExcludingReview = (() => {
+		if (!reviewQueueLoaded) return {};
+
+		const result: Record<string, number> = {};
+
+		// Calculate for each filter
+		Object.entries(filterResults).forEach(([filterKey, filterData]) => {
+			if (filterData?.emails) {
+				const filteredEmails = filterData.emails.filter(email => !reviewQueue.has(email.id));
+				result[filterKey] = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
+			}
+		});
+
+		return result;
+	})();
+
+	// Create reactive sidebar filters data that updates when review queue changes (only when loaded)
+	$: sidebarFiltersData = (() => {
+		if (!reviewQueueLoaded) {
+			return smartFiltersData.length > 0 ? smartFiltersData : smartFilters;
+		}
+
+		return (smartFiltersData.length > 0 ? smartFiltersData : smartFilters).map(filter => {
+			// Map filter IDs to their keys in filterSizesExcludingReview
+			const filterKeyMap: Record<string, string> = {
+				'low-engagement': 'lowEngagement',
+				'old-news': 'oldNews',
+				'storage-hogs': 'storageHogs',
+				'frequent-senders': 'frequentSenders',
+				'dormant-senders': 'dormantSenders',
+				'spammy-tlds': 'spammyTLDs',
+				'social-media': 'socialMedia',
+				'longtail': 'longtail',
+				'protected': 'protected'
+			};
+
+			const filterKey = filterKeyMap[filter.id];
+			const adjustedSize = filterKey && filterSizesExcludingReview[filterKey] !== undefined
+				? filterSizesExcludingReview[filterKey]
+				: filter.totalSize;
+
+			return {
+				...filter,
+				displaySize: adjustedSize
+			};
+		});
+	})();
+
+	// Calculate selected emails summary
+	$: selectedEmailsData = (() => {
+		const selectedEmailRecords = filteredEmails.filter(email => selectedEmails.has(email.id));
+		const selectedTotalSize = selectedEmailRecords.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
+		const selectedTotalSizeMB = selectedTotalSize / (1024 * 1024);
+
+		return {
+			count: selectedEmailRecords.length,
+			totalSizeMB: selectedTotalSizeMB,
+			emailPercentage: totalEmailCount > 0 ? (selectedEmailRecords.length / totalEmailCount * 100) : 0,
+			sizePercentage: totalSizeMB > 0 ? (selectedTotalSizeMB / totalSizeMB * 100) : 0
+		};
+	})();
 
 	// Debug logging for percentage calculations
 	$: if (filteredEmails.length > 0) {
@@ -56,6 +180,9 @@
 			groupedEmails = groupEmailsBySender(filteredEmails);
 			console.log('Grouped emails:', groupedEmails.length, 'items');
 			console.log('Expanded groups:', Array.from(expandedGroups));
+		} else {
+			// Clear grouped emails when no filtered emails remain
+			groupedEmails = [];
 		}
 		// Reference expandedGroups to make this reactive statement depend on it
 		expandedGroups.size;
@@ -78,37 +205,40 @@
 
 		switch(filterId) {
 			case 'inbox':
-				filteredEmails = allEmails;
+				filteredEmails = allEmails.filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'low-engagement':
-				filteredEmails = filterResults.lowEngagement?.emails || [];
+				filteredEmails = (filterResults.lowEngagement?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'old-news':
-				filteredEmails = filterResults.oldNews?.emails || [];
+				filteredEmails = (filterResults.oldNews?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'storage-hogs':
-				filteredEmails = filterResults.storageHogs?.emails || [];
+				filteredEmails = (filterResults.storageHogs?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'frequent-senders':
-				filteredEmails = filterResults.frequentSenders?.emails || [];
+				filteredEmails = (filterResults.frequentSenders?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'dormant-senders':
-				filteredEmails = filterResults.dormantSenders?.emails || [];
+				filteredEmails = (filterResults.dormantSenders?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'spammy-tlds':
-				filteredEmails = filterResults.spammyTLDs?.emails || [];
+				filteredEmails = (filterResults.spammyTLDs?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'social-media':
-				filteredEmails = filterResults.socialMedia?.emails || [];
+				filteredEmails = (filterResults.socialMedia?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'longtail':
-				filteredEmails = filterResults.longtail?.emails || [];
+				filteredEmails = (filterResults.longtail?.emails || []).filter(email => !reviewQueue.has(email.id));
 				break;
 			case 'protected':
-				filteredEmails = filterResults.protected?.emails || [];
+				filteredEmails = (filterResults.protected?.emails || []).filter(email => !reviewQueue.has(email.id));
+				break;
+			case 'review':
+				filteredEmails = allEmails.filter(email => reviewQueue.has(email.id));
 				break;
 			default:
-				filteredEmails = allEmails;
+				filteredEmails = allEmails.filter(email => !reviewQueue.has(email.id));
 		}
 	}
 
@@ -384,6 +514,93 @@
 	function isGroupPartiallySelected(sender: string, emails: EmailRecord[]): boolean {
 		const selectedCount = emails.filter(email => selectedEmails.has(email.id)).length;
 		return selectedCount > 0 && selectedCount < emails.length;
+	}
+
+	// Add selected emails to review queue
+	async function addToReviewQueue() {
+		if (selectedEmailsData.count === 0) return;
+
+		const emailIdsToReview = Array.from(selectedEmails);
+		console.log(`Adding ${emailIdsToReview.length} emails to review queue`);
+
+		// Add to review queue
+		emailIdsToReview.forEach(id => reviewQueue.add(id));
+		reviewQueue = reviewQueue;
+		await saveReviewQueueToDB();
+
+		// Clear selection after adding to review
+		selectedEmails.clear();
+		selectedGroups.clear();
+		selectedEmails = selectedEmails;
+		selectedGroups = selectedGroups;
+
+		// Clean up expanded groups that no longer have emails
+		const remainingEmails = allEmails.filter(email => !reviewQueue.has(email.id));
+		const remainingSenders = new Set(remainingEmails.map(email => extractEmailAddress(email.from)).filter(Boolean));
+
+		// Remove expanded groups for senders that no longer have emails
+		for (const expandedSender of Array.from(expandedGroups)) {
+			if (!remainingSenders.has(expandedSender)) {
+				expandedGroups.delete(expandedSender);
+			}
+		}
+		expandedGroups = expandedGroups;
+
+		// Refresh the current view to remove emails from display
+		switchFilter(currentFilter, currentView);
+	}
+
+	// Remove selected emails from review queue (put them back)
+	async function putBackFromReview() {
+		if (selectedEmailsData.count === 0) return;
+
+		const emailIdsToRestore = Array.from(selectedEmails);
+		console.log(`Putting back ${emailIdsToRestore.length} emails from review queue`);
+
+		// Remove from review queue
+		emailIdsToRestore.forEach(id => reviewQueue.delete(id));
+		reviewQueue = reviewQueue;
+		await saveReviewQueueToDB();
+
+		// Clear selection after putting back
+		selectedEmails.clear();
+		selectedGroups.clear();
+		selectedEmails = selectedEmails;
+		selectedGroups = selectedGroups;
+
+		// Refresh the current view to remove emails from review display
+		switchFilter(currentFilter, currentView);
+	}
+
+	// Calculate if all displayed emails are selected
+	$: allDisplayedSelected = filteredEmails.length > 0 && filteredEmails.every(email => selectedEmails.has(email.id));
+
+	// Calculate if some (but not all) displayed emails are selected
+	$: someDisplayedSelected = filteredEmails.some(email => selectedEmails.has(email.id)) && !allDisplayedSelected;
+
+	// Toggle select all displayed emails
+	function toggleSelectAll() {
+		if (allDisplayedSelected) {
+			// Deselect all displayed emails
+			for (const email of filteredEmails) {
+				selectedEmails.delete(email.id);
+			}
+			selectedGroups.clear();
+		} else {
+			// Select all displayed emails
+			for (const email of filteredEmails) {
+				selectedEmails.add(email.id);
+			}
+			// Also select all groups that have all their emails in the current display
+			const senderGroups = groupEmailsBySender(filteredEmails);
+			for (const group of senderGroups) {
+				if (group.emails.every(email => filteredEmails.includes(email))) {
+					selectedGroups.add(group.sender);
+				}
+			}
+		}
+		selectedEmails = selectedEmails;
+		selectedGroups = selectedGroups;
 	}
 
 	// Helper function to format size in MB
@@ -873,6 +1090,10 @@
 	onMount(async () => {
 		try {
 			await emailDB.init();
+
+			// Load review queue from IndexedDB
+			await loadReviewQueueFromDB();
+
 			const dbEmails = await emailDB.getAllEmails();
 
 			// Filter emails that have details and required fields (same as display filter)
@@ -1025,25 +1246,31 @@
 						onclick={() => switchFilter('inbox', 'Inbox')}
 					>
 						<span>Inbox</span>
-						<span class="text-xs {currentFilter === 'inbox' ? 'text-blue-200' : 'text-gray-400'}">{totalSizeMB < 1 ? totalSizeMB.toFixed(2) : Math.round(totalSizeMB)} MB</span>
+						<span class="text-xs {currentFilter === 'inbox' ? 'text-blue-200' : 'text-gray-400'}">{inboxSizeMB < 1 ? inboxSizeMB.toFixed(2) : Math.round(inboxSizeMB)} MB</span>
 					</button>
 					<div class="ml-4 mt-1 space-y-1">
-						{#each smartFiltersData.length > 0 ? smartFiltersData : smartFilters as filter}
+						{#each sidebarFiltersData as filter}
 							<button
 								class="flex items-center justify-between w-full px-3 py-2 text-sm rounded-md cursor-pointer {currentFilter === filter.id ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
 								onclick={() => switchFilter(filter.id, filter.title.replace('🚧 ', ''))}
 							>
 								<span class="truncate">{filter.title.replace('🚧 ', '')}</span>
-								<span class="text-xs {currentFilter === filter.id ? 'text-blue-200' : 'text-gray-400'}">{filter.totalSize < 1 ? filter.totalSize.toFixed(2) : Math.round(filter.totalSize)} MB</span>
+								<span class="text-xs {currentFilter === filter.id ? 'text-blue-200' : 'text-gray-400'}">
+									{filter.displaySize < 1 ? filter.displaySize.toFixed(2) : Math.round(filter.displaySize)} MB
+								</span>
 							</button>
 						{/each}
 					</div>
 				</div>
 
-				<!-- Review -->
-				<a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-50 cursor-pointer">
-					Review
-				</a>
+				<!-- Review Section -->
+				<button
+					class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md cursor-pointer {currentFilter === 'review' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-900 hover:bg-gray-50'}"
+					onclick={() => switchFilter('review', 'Review Queue')}
+				>
+					<span>Review</span>
+					<span class="text-xs {currentFilter === 'review' ? 'text-blue-200' : 'text-gray-400'}">{reviewQueueSizeMB < 1 ? reviewQueueSizeMB.toFixed(2) : Math.round(reviewQueueSizeMB)} MB</span>
+				</button>
 
 				<!-- Trash -->
 				<a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-50 cursor-pointer">
@@ -1084,14 +1311,28 @@
 				</div>
 			{:else if groupedEmails.length === 0}
 				<div class="p-8 text-center text-gray-500 flex-1">
-					No emails found. Run a scan to see your emails.
+					{#if filteredEmails.length === 0 && allEmails.length > 0}
+						{#if currentFilter === 'review'}
+							No emails in review queue yet.
+						{:else}
+							No eligible emails for this filter. All emails may have been moved to review queue or don't match the criteria.
+						{/if}
+					{:else}
+						No emails found. Run a scan to see your emails.
+					{/if}
 				</div>
 			{:else}
 				<!-- Email list header -->
 				<div class="flex-shrink-0 bg-gray-50 border-b">
 					<div class="flex items-center p-4 text-sm font-normal text-gray-700">
 						<div class="w-12 flex-shrink-0">
-							<input type="checkbox" class="rounded border-gray-300" />
+							<input
+								type="checkbox"
+								class="rounded border-gray-300"
+								checked={allDisplayedSelected}
+								indeterminate={someDisplayedSelected}
+								onchange={toggleSelectAll}
+							/>
 						</div>
 						<div class="w-48 flex-shrink-0">Sender</div>
 						<div class="flex-1 min-w-0">Subject</div>
@@ -1188,4 +1429,36 @@
 			<!-- <RecentEmailsSection /> -->
 		<!-- {/if} -->
 		</div>
+
+	<!-- Floating Selection Bar -->
+	{#if selectedEmailsData.count > 0}
+		<div class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
+			<div class="bg-black text-white px-4 py-4 rounded-lg shadow-lg flex items-center justify-between gap-4 min-w-3xl">
+				<div class="flex items-center gap-2">
+					<div class="flex items-center gap-2">
+					<span class="font-medium">{selectedEmailsData.count}</span>
+					<span>selected</span>
+					{#if selectedEmailsData.count > 0}
+						<Badge variant="secondary">{selectedEmailsData.emailPercentage.toFixed(1)}%</Badge>
+					{/if}
+				</div>
+
+				{#if selectedEmailsData.count > 0}
+					<div class="flex items-center gap-2">
+						<span class="font-medium">{selectedEmailsData.totalSizeMB < 1 ? selectedEmailsData.totalSizeMB.toFixed(2) : Math.round(selectedEmailsData.totalSizeMB)} MB</span>
+						<Badge variant="secondary">{selectedEmailsData.sizePercentage.toFixed(1)}%</Badge>
+					</div>
+				{/if}
+				</div>
+
+				<button
+					type="button"
+					class="bg-white hover:bg-gray-100 text-black px-4 py-2 rounded-md text-sm font-medium transition-colors"
+					onclick={currentFilter === 'review' ? putBackFromReview : addToReviewQueue}
+				>
+					{currentFilter === 'review' ? 'Put Back' : 'Add to Review Queue'}
+				</button>
+			</div>
+		</div>
+	{/if}
 </div>
