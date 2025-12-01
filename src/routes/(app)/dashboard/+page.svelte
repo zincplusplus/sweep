@@ -54,7 +54,7 @@
 			const migratedData = await migrateLocalStorageToIndexedDB();
 
 			// Then load from IndexedDB
-			const emailIds = migratedData || await emailDB.getReviewQueue();
+			const emailIds = migratedData || (await emailDB.getReviewQueue());
 			reviewQueue = new Set(emailIds);
 			reviewQueueLoaded = true;
 			console.log('Loaded review queue from IndexedDB:', emailIds.length, 'emails');
@@ -82,14 +82,30 @@
 	let currentFilter = 'inbox'; // Track current filter selection
 
 	// Calculate percentages of emails and size shown vs total
-	$: emailPercentage = totalEmailCount > 0 ? ((filteredEmails.length / totalEmailCount) * 100) : 0;
-	$: sizePercentage = totalSizeMB > 0 ? ((filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024)) / totalSizeMB * 100) : 0;
+	$: emailPercentage = totalEmailCount > 0 ? (filteredEmails.length / totalEmailCount) * 100 : 0;
+	$: sizePercentage =
+		totalSizeMB > 0
+			? (filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) /
+					(1024 * 1024) /
+					totalSizeMB) *
+				100
+			: 0;
 
 	// Calculate sidebar display values excluding review queue (only when loaded)
-	$: inboxSizeMB = reviewQueueLoaded ? allEmails.filter(email => !reviewQueue.has(email.id)).reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024) : 0;
+	$: inboxSizeMB = reviewQueueLoaded
+		? allEmails
+				.filter((email) => !reviewQueue.has(email.id))
+				.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) /
+			(1024 * 1024)
+		: 0;
 
 	// Calculate review queue size (only when loaded)
-	$: reviewQueueSizeMB = reviewQueueLoaded ? allEmails.filter(email => reviewQueue.has(email.id)).reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024) : 0;
+	$: reviewQueueSizeMB = reviewQueueLoaded
+		? allEmails
+				.filter((email) => reviewQueue.has(email.id))
+				.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) /
+			(1024 * 1024)
+		: 0;
 
 	// Calculate filter sizes excluding review queue (only when loaded)
 	$: filterSizesExcludingReview = (() => {
@@ -100,8 +116,9 @@
 		// Calculate for each filter
 		Object.entries(filterResults).forEach(([filterKey, filterData]) => {
 			if (filterData?.emails) {
-				const filteredEmails = filterData.emails.filter(email => !reviewQueue.has(email.id));
-				result[filterKey] = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
+				const filteredEmails = filterData.emails.filter((email) => !reviewQueue.has(email.id));
+				result[filterKey] =
+					filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
 			}
 		});
 
@@ -114,7 +131,7 @@
 			return smartFiltersData.length > 0 ? smartFiltersData : smartFilters;
 		}
 
-		return (smartFiltersData.length > 0 ? smartFiltersData : smartFilters).map(filter => {
+		return (smartFiltersData.length > 0 ? smartFiltersData : smartFilters).map((filter) => {
 			// Map filter IDs to their keys in filterSizesExcludingReview
 			const filterKeyMap: Record<string, string> = {
 				'low-engagement': 'lowEngagement',
@@ -124,14 +141,15 @@
 				'dormant-senders': 'dormantSenders',
 				'spammy-tlds': 'spammyTLDs',
 				'social-media': 'socialMedia',
-				'longtail': 'longtail',
-				'protected': 'protected'
+				longtail: 'longtail',
+				protected: 'protected'
 			};
 
 			const filterKey = filterKeyMap[filter.id];
-			const adjustedSize = filterKey && filterSizesExcludingReview[filterKey] !== undefined
-				? filterSizesExcludingReview[filterKey]
-				: filter.totalSize;
+			const adjustedSize =
+				filterKey && filterSizesExcludingReview[filterKey] !== undefined
+					? filterSizesExcludingReview[filterKey]
+					: filter.totalSize;
 
 			return {
 				...filter,
@@ -142,15 +160,19 @@
 
 	// Calculate selected emails summary
 	$: selectedEmailsData = (() => {
-		const selectedEmailRecords = filteredEmails.filter(email => selectedEmails.has(email.id));
-		const selectedTotalSize = selectedEmailRecords.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
+		const selectedEmailRecords = filteredEmails.filter((email) => selectedEmails.has(email.id));
+		const selectedTotalSize = selectedEmailRecords.reduce(
+			(sum, email) => sum + (email.sizeEstimate || 0),
+			0
+		);
 		const selectedTotalSizeMB = selectedTotalSize / (1024 * 1024);
 
 		return {
 			count: selectedEmailRecords.length,
 			totalSizeMB: selectedTotalSizeMB,
-			emailPercentage: totalEmailCount > 0 ? (selectedEmailRecords.length / totalEmailCount * 100) : 0,
-			sizePercentage: totalSizeMB > 0 ? (selectedTotalSizeMB / totalSizeMB * 100) : 0
+			emailPercentage:
+				totalEmailCount > 0 ? (selectedEmailRecords.length / totalEmailCount) * 100 : 0,
+			sizePercentage: totalSizeMB > 0 ? (selectedTotalSizeMB / totalSizeMB) * 100 : 0
 		};
 	})();
 
@@ -163,7 +185,8 @@
 		console.log('Total email count:', totalEmailCount);
 		console.log('Email percentage:', emailPercentage.toFixed(1) + '%');
 
-		const filteredSizeMB = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
+		const filteredSizeMB =
+			filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
 		console.log('Filtered size MB:', filteredSizeMB.toFixed(2));
 		console.log('Total size MB:', totalSizeMB.toFixed(2));
 		console.log('Size percentage:', sizePercentage.toFixed(1) + '%');
@@ -194,7 +217,7 @@
 			count: groupedEmails.length,
 			getScrollElement: () => parentElement,
 			estimateSize: () => 48, // Fixed height for all rows (p-4 = 32px + text ~24px)
-			overscan: 5, // Render 5 extra items outside viewport
+			overscan: 5 // Render 5 extra items outside viewport
 		});
 	}
 
@@ -203,42 +226,60 @@
 		currentFilter = filterId;
 		currentView = filterName;
 
-		switch(filterId) {
+		switch (filterId) {
 			case 'inbox':
-				filteredEmails = allEmails.filter(email => !reviewQueue.has(email.id));
+				filteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
 				break;
 			case 'low-engagement':
-				filteredEmails = (filterResults.lowEngagement?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.lowEngagement?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'old-news':
-				filteredEmails = (filterResults.oldNews?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.oldNews?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'storage-hogs':
-				filteredEmails = (filterResults.storageHogs?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.storageHogs?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'frequent-senders':
-				filteredEmails = (filterResults.frequentSenders?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.frequentSenders?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'dormant-senders':
-				filteredEmails = (filterResults.dormantSenders?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.dormantSenders?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'spammy-tlds':
-				filteredEmails = (filterResults.spammyTLDs?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.spammyTLDs?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'social-media':
-				filteredEmails = (filterResults.socialMedia?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.socialMedia?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'longtail':
-				filteredEmails = (filterResults.longtail?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.longtail?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'protected':
-				filteredEmails = (filterResults.protected?.emails || []).filter(email => !reviewQueue.has(email.id));
+				filteredEmails = (filterResults.protected?.emails || []).filter(
+					(email) => !reviewQueue.has(email.id)
+				);
 				break;
 			case 'review':
-				filteredEmails = allEmails.filter(email => reviewQueue.has(email.id));
+				filteredEmails = allEmails.filter((email) => reviewQueue.has(email.id));
 				break;
 			default:
-				filteredEmails = allEmails.filter(email => !reviewQueue.has(email.id));
+				filteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
 		}
 	}
 
@@ -343,7 +384,7 @@
 		const groups = new Map<string, EmailRecord[]>();
 
 		// Group emails by sender
-		emails.forEach(email => {
+		emails.forEach((email) => {
 			const senderEmail = extractEmailAddress(email.from);
 			if (!senderEmail) return;
 
@@ -377,11 +418,11 @@
 
 			// Add individual emails if group is expanded (sorted by size descending)
 			if (expandedGroups.has(group.sender)) {
-				const sortedEmails = [...group.emails].sort((a, b) =>
-					(b.sizeEstimate || 0) - (a.sizeEstimate || 0)
+				const sortedEmails = [...group.emails].sort(
+					(a, b) => (b.sizeEstimate || 0) - (a.sizeEstimate || 0)
 				);
 
-				sortedEmails.forEach(email => {
+				sortedEmails.forEach((email) => {
 					virtualItems.push({
 						type: 'email',
 						email,
@@ -400,8 +441,8 @@
 
 		// Store current scroll state before toggling
 		const currentScrollTop = parentElement.scrollTop;
-		const clickedGroupIndex = groupedEmails.findIndex(item =>
-			item.type === 'group' && item.sender === sender
+		const clickedGroupIndex = groupedEmails.findIndex(
+			(item) => item.type === 'group' && item.sender === sender
 		);
 
 		// Toggle the group state
@@ -418,16 +459,16 @@
 			if (!parentElement || !virtualizer) return;
 
 			// Find the group header position after the change
-			const newGroupIndex = groupedEmails.findIndex(item =>
-				item.type === 'group' && item.sender === sender
+			const newGroupIndex = groupedEmails.findIndex(
+				(item) => item.type === 'group' && item.sender === sender
 			);
 
 			if (newGroupIndex !== -1) {
 				if (wasExpanded) {
 					// COLLAPSING: Try to maintain the exact scroll position
 					// Calculate how much content was removed
-					const collapsedGroup = groupedEmails.find(item =>
-						item.type === 'group' && item.sender === sender
+					const collapsedGroup = groupedEmails.find(
+						(item) => item.type === 'group' && item.sender === sender
 					);
 
 					if (collapsedGroup) {
@@ -472,15 +513,15 @@
 
 	// Toggle selection of entire group
 	function toggleGroupSelection(sender: string, emails: EmailRecord[]) {
-		const allSelected = emails.every(email => selectedEmails.has(email.id));
+		const allSelected = emails.every((email) => selectedEmails.has(email.id));
 
 		if (allSelected) {
 			// Unselect all emails in group
-			emails.forEach(email => selectedEmails.delete(email.id));
+			emails.forEach((email) => selectedEmails.delete(email.id));
 			selectedGroups.delete(sender);
 		} else {
 			// Select all emails in group
-			emails.forEach(email => selectedEmails.add(email.id));
+			emails.forEach((email) => selectedEmails.add(email.id));
 			selectedGroups.add(sender);
 		}
 
@@ -497,8 +538,9 @@
 		}
 
 		// Check if all emails in group are now selected
-		const groupEmails = groupedEmails.find(item => item.type === 'group' && item.sender === sender)?.emails || [];
-		const allSelected = groupEmails.every(email => selectedEmails.has(email.id));
+		const groupEmails =
+			groupedEmails.find((item) => item.type === 'group' && item.sender === sender)?.emails || [];
+		const allSelected = groupEmails.every((email) => selectedEmails.has(email.id));
 
 		if (allSelected) {
 			selectedGroups.add(sender);
@@ -512,7 +554,7 @@
 
 	// Check if group is partially selected
 	function isGroupPartiallySelected(sender: string, emails: EmailRecord[]): boolean {
-		const selectedCount = emails.filter(email => selectedEmails.has(email.id)).length;
+		const selectedCount = emails.filter((email) => selectedEmails.has(email.id)).length;
 		return selectedCount > 0 && selectedCount < emails.length;
 	}
 
@@ -524,7 +566,7 @@
 		console.log(`Adding ${emailIdsToReview.length} emails to review queue`);
 
 		// Add to review queue
-		emailIdsToReview.forEach(id => reviewQueue.add(id));
+		emailIdsToReview.forEach((id) => reviewQueue.add(id));
 		reviewQueue = reviewQueue;
 		await saveReviewQueueToDB();
 
@@ -535,8 +577,10 @@
 		selectedGroups = selectedGroups;
 
 		// Clean up expanded groups that no longer have emails
-		const remainingEmails = allEmails.filter(email => !reviewQueue.has(email.id));
-		const remainingSenders = new Set(remainingEmails.map(email => extractEmailAddress(email.from)).filter(Boolean));
+		const remainingEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
+		const remainingSenders = new Set(
+			remainingEmails.map((email) => extractEmailAddress(email.from)).filter(Boolean)
+		);
 
 		// Remove expanded groups for senders that no longer have emails
 		for (const expandedSender of Array.from(expandedGroups)) {
@@ -558,7 +602,7 @@
 		console.log(`Putting back ${emailIdsToRestore.length} emails from review queue`);
 
 		// Remove from review queue
-		emailIdsToRestore.forEach(id => reviewQueue.delete(id));
+		emailIdsToRestore.forEach((id) => reviewQueue.delete(id));
 		reviewQueue = reviewQueue;
 		await saveReviewQueueToDB();
 
@@ -573,10 +617,12 @@
 	}
 
 	// Calculate if all displayed emails are selected
-	$: allDisplayedSelected = filteredEmails.length > 0 && filteredEmails.every(email => selectedEmails.has(email.id));
+	$: allDisplayedSelected =
+		filteredEmails.length > 0 && filteredEmails.every((email) => selectedEmails.has(email.id));
 
 	// Calculate if some (but not all) displayed emails are selected
-	$: someDisplayedSelected = filteredEmails.some(email => selectedEmails.has(email.id)) && !allDisplayedSelected;
+	$: someDisplayedSelected =
+		filteredEmails.some((email) => selectedEmails.has(email.id)) && !allDisplayedSelected;
 
 	// Toggle select all displayed emails
 	function toggleSelectAll() {
@@ -594,7 +640,7 @@
 			// Also select all groups that have all their emails in the current display
 			const senderGroups = groupEmailsBySender(filteredEmails);
 			for (const group of senderGroups) {
-				if (group.emails.every(email => filteredEmails.includes(email))) {
+				if (group.emails.every((email) => filteredEmails.includes(email))) {
 					selectedGroups.add(group.sender);
 				}
 			}
@@ -632,7 +678,7 @@
 		}
 	}
 
-	// Extract email address from 'from' field
+	// Helper function to extract email address from 'from' field
 	function extractEmailAddress(fromField: string | undefined): string {
 		if (!fromField) return '';
 
@@ -641,19 +687,28 @@
 		return emailMatch ? emailMatch[1] : fromField;
 	}
 
+	// Open email in Gmail
+	function openEmailInGmail(emailId: string) {
+		const gmailUrl = `https://mail.google.com/mail/u/0/#all/${emailId}`;
+		window.open(gmailUrl, '_blank');
+	}
+
 	// Calculate Low Engagement Senders
 	function calculateLowEngagementSenders(allEmails: EmailRecord[]) {
-		const senderStats = new Map<string, {
-			totalEmails: number;
-			hasAttachments: boolean;
-			totalSize: number;
-			emails: EmailRecord[];
-		}>();
+		const senderStats = new Map<
+			string,
+			{
+				totalEmails: number;
+				hasAttachments: boolean;
+				totalSize: number;
+				emails: EmailRecord[];
+			}
+		>();
 
 		// Group emails by sender
 		allEmails
-			.filter(email => email.detailsFetchedAt && email.from)
-			.forEach(email => {
+			.filter((email) => email.detailsFetchedAt && email.from)
+			.forEach((email) => {
 				const senderEmail = extractEmailAddress(email.from);
 				if (!senderEmail) return;
 
@@ -701,7 +756,7 @@
 		const sixMonthsAgo = new Date();
 		sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-		const matchingEmails = allEmails.filter(email => {
+		const matchingEmails = allEmails.filter((email) => {
 			// Must have details fetched and unsubscribe header
 			if (!email.detailsFetchedAt || !email.listUnsubscribeValue) {
 				return false;
@@ -714,8 +769,7 @@
 			return emailDate < sixMonthsAgo;
 		});
 
-		const totalSize = matchingEmails.reduce((sum, email) =>
-			sum + (email.sizeEstimate || 0), 0);
+		const totalSize = matchingEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
 		return {
 			emailCount: matchingEmails.length,
@@ -726,16 +780,19 @@
 
 	// Calculate Storage Hogs
 	function calculateStorageHogs(allEmails: EmailRecord[]) {
-		const senderStats = new Map<string, {
-			totalSize: number;
-			emailCount: number;
-			emails: EmailRecord[];
-		}>();
+		const senderStats = new Map<
+			string,
+			{
+				totalSize: number;
+				emailCount: number;
+				emails: EmailRecord[];
+			}
+		>();
 
 		// Group emails by sender and calculate storage
 		allEmails
-			.filter(email => email.detailsFetchedAt && email.from)
-			.forEach(email => {
+			.filter((email) => email.detailsFetchedAt && email.from)
+			.forEach((email) => {
 				const senderEmail = extractEmailAddress(email.from);
 				if (!senderEmail) return;
 
@@ -776,16 +833,19 @@
 
 	// Calculate Frequent Senders
 	function calculateFrequentSenders(allEmails: EmailRecord[]) {
-		const senderStats = new Map<string, {
-			emailCount: number;
-			totalSize: number;
-			emails: EmailRecord[];
-		}>();
+		const senderStats = new Map<
+			string,
+			{
+				emailCount: number;
+				totalSize: number;
+				emails: EmailRecord[];
+			}
+		>();
 
 		// Group emails by sender and count frequency
 		allEmails
-			.filter(email => email.detailsFetchedAt && email.from)
-			.forEach(email => {
+			.filter((email) => email.detailsFetchedAt && email.from)
+			.forEach((email) => {
 				const senderEmail = extractEmailAddress(email.from);
 				if (!senderEmail) return;
 
@@ -829,17 +889,20 @@
 		const twoYearsAgo = new Date();
 		twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
 
-		const senderStats = new Map<string, {
-			emailCount: number;
-			totalSize: number;
-			lastEmailDate: Date | null;
-			emails: EmailRecord[];
-		}>();
+		const senderStats = new Map<
+			string,
+			{
+				emailCount: number;
+				totalSize: number;
+				lastEmailDate: Date | null;
+				emails: EmailRecord[];
+			}
+		>();
 
 		// Group emails by sender and track last email date
 		allEmails
-			.filter(email => email.detailsFetchedAt && email.from && email.date)
-			.forEach(email => {
+			.filter((email) => email.detailsFetchedAt && email.from && email.date)
+			.forEach((email) => {
 				const senderEmail = extractEmailAddress(email.from);
 				if (!senderEmail) return;
 
@@ -871,9 +934,7 @@
 
 		for (const [sender, stats] of senderStats.entries()) {
 			// Criteria: 10+ emails historically AND last email was 2+ years ago
-			if (stats.emailCount >= 10 &&
-				stats.lastEmailDate &&
-				stats.lastEmailDate < twoYearsAgo) {
+			if (stats.emailCount >= 10 && stats.lastEmailDate && stats.lastEmailDate < twoYearsAgo) {
 				matchingEmails.push(...stats.emails);
 				totalSize += stats.totalSize;
 			}
@@ -888,10 +949,23 @@
 
 	// Calculate Spammy TLDs
 	function calculateSpammyTLDs(allEmails: EmailRecord[]) {
-		const spammyTLDs = ['.info', '.biz', '.click', '.link', '.top', '.xyz',
-			'.stream', '.download', '.loan', '.win', '.tk', '.ml', '.ga'];
+		const spammyTLDs = [
+			'.info',
+			'.biz',
+			'.click',
+			'.link',
+			'.top',
+			'.xyz',
+			'.stream',
+			'.download',
+			'.loan',
+			'.win',
+			'.tk',
+			'.ml',
+			'.ga'
+		];
 
-		const matchingEmails = allEmails.filter(email => {
+		const matchingEmails = allEmails.filter((email) => {
 			if (!email.detailsFetchedAt || !email.from) return false;
 
 			const senderEmail = extractEmailAddress(email.from);
@@ -904,11 +978,10 @@
 			const domain = domainMatch[1].toLowerCase();
 
 			// Check if domain ends with any spammy TLD
-			return spammyTLDs.some(tld => domain.endsWith(tld));
+			return spammyTLDs.some((tld) => domain.endsWith(tld));
 		});
 
-		const totalSize = matchingEmails.reduce((sum, email) =>
-			sum + (email.sizeEstimate || 0), 0);
+		const totalSize = matchingEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
 		return {
 			emailCount: matchingEmails.length,
@@ -920,22 +993,44 @@
 	// Calculate Social Media Notifications
 	function calculateSocialMediaNotifications(allEmails: EmailRecord[]) {
 		const socialMediaDomains = [
-			'linkedin.com', 'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
-			'reddit.com', 'pinterest.com', 'quora.com', 'medium.com', 'tiktok.com',
+			'linkedin.com',
+			'facebook.com',
+			'twitter.com',
+			'x.com',
+			'instagram.com',
+			'reddit.com',
+			'pinterest.com',
+			'quora.com',
+			'medium.com',
+			'tiktok.com',
 			// Include common subdomains and variations
-			'mail.linkedin.com', 'noreply.linkedin.com', 'notifications.linkedin.com',
-			'mail.facebook.com', 'notification.facebook.com', 'noreply.facebook.com',
-			'info.twitter.com', 'notify.twitter.com', 'noreply.twitter.com',
-			'no-reply.x.com', 'noreply.x.com',
-			'mail.instagram.com', 'no-reply.instagram.com', 'noreply.instagram.com',
-			'noreply.reddit.com', 'donotreply.reddit.com',
-			'noreply.pinterest.com', 'no-reply.pinterest.com',
-			'noreply.quora.com', 'digest-noreply.quora.com',
-			'noreply.medium.com', 'no-reply.medium.com',
-			'noreply.tiktok.com', 'no-reply.tiktok.com'
+			'mail.linkedin.com',
+			'noreply.linkedin.com',
+			'notifications.linkedin.com',
+			'mail.facebook.com',
+			'notification.facebook.com',
+			'noreply.facebook.com',
+			'info.twitter.com',
+			'notify.twitter.com',
+			'noreply.twitter.com',
+			'no-reply.x.com',
+			'noreply.x.com',
+			'mail.instagram.com',
+			'no-reply.instagram.com',
+			'noreply.instagram.com',
+			'noreply.reddit.com',
+			'donotreply.reddit.com',
+			'noreply.pinterest.com',
+			'no-reply.pinterest.com',
+			'noreply.quora.com',
+			'digest-noreply.quora.com',
+			'noreply.medium.com',
+			'no-reply.medium.com',
+			'noreply.tiktok.com',
+			'no-reply.tiktok.com'
 		];
 
-		const matchingEmails = allEmails.filter(email => {
+		const matchingEmails = allEmails.filter((email) => {
 			if (!email.detailsFetchedAt || !email.from) return false;
 
 			const senderEmail = extractEmailAddress(email.from);
@@ -948,13 +1043,12 @@
 			const domain = domainMatch[1].toLowerCase();
 
 			// Check if domain matches any social media domain (exact match or ends with)
-			return socialMediaDomains.some(socialDomain =>
-				domain === socialDomain || domain.endsWith('.' + socialDomain)
+			return socialMediaDomains.some(
+				(socialDomain) => domain === socialDomain || domain.endsWith('.' + socialDomain)
 			);
 		});
 
-		const totalSize = matchingEmails.reduce((sum, email) =>
-			sum + (email.sizeEstimate || 0), 0);
+		const totalSize = matchingEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
 		return {
 			emailCount: matchingEmails.length,
@@ -982,47 +1076,89 @@
 		}
 
 		// Check Spammy TLDs
-		const spammyTLDs = ['.info', '.biz', '.click', '.link', '.top', '.xyz',
-			'.stream', '.download', '.loan', '.win', '.tk', '.ml', '.ga'];
-		if (spammyTLDs.some(tld => domain.endsWith(tld))) return true;
+		const spammyTLDs = [
+			'.info',
+			'.biz',
+			'.click',
+			'.link',
+			'.top',
+			'.xyz',
+			'.stream',
+			'.download',
+			'.loan',
+			'.win',
+			'.tk',
+			'.ml',
+			'.ga'
+		];
+		if (spammyTLDs.some((tld) => domain.endsWith(tld))) return true;
 
 		// Check Social Media
 		const socialMediaDomains = [
-			'linkedin.com', 'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
-			'reddit.com', 'pinterest.com', 'quora.com', 'medium.com', 'tiktok.com',
-			'mail.linkedin.com', 'noreply.linkedin.com', 'notifications.linkedin.com',
-			'mail.facebook.com', 'notification.facebook.com', 'noreply.facebook.com',
-			'info.twitter.com', 'notify.twitter.com', 'noreply.twitter.com',
-			'no-reply.x.com', 'noreply.x.com',
-			'mail.instagram.com', 'no-reply.instagram.com', 'noreply.instagram.com',
-			'noreply.reddit.com', 'donotreply.reddit.com',
-			'noreply.pinterest.com', 'no-reply.pinterest.com',
-			'noreply.quora.com', 'digest-noreply.quora.com',
-			'noreply.medium.com', 'no-reply.medium.com',
-			'noreply.tiktok.com', 'no-reply.tiktok.com'
+			'linkedin.com',
+			'facebook.com',
+			'twitter.com',
+			'x.com',
+			'instagram.com',
+			'reddit.com',
+			'pinterest.com',
+			'quora.com',
+			'medium.com',
+			'tiktok.com',
+			'mail.linkedin.com',
+			'noreply.linkedin.com',
+			'notifications.linkedin.com',
+			'mail.facebook.com',
+			'notification.facebook.com',
+			'noreply.facebook.com',
+			'info.twitter.com',
+			'notify.twitter.com',
+			'noreply.twitter.com',
+			'no-reply.x.com',
+			'noreply.x.com',
+			'mail.instagram.com',
+			'no-reply.instagram.com',
+			'noreply.instagram.com',
+			'noreply.reddit.com',
+			'donotreply.reddit.com',
+			'noreply.pinterest.com',
+			'no-reply.pinterest.com',
+			'noreply.quora.com',
+			'digest-noreply.quora.com',
+			'noreply.medium.com',
+			'no-reply.medium.com',
+			'noreply.tiktok.com',
+			'no-reply.tiktok.com'
 		];
-		if (socialMediaDomains.some(socialDomain =>
-			domain === socialDomain || domain.endsWith('.' + socialDomain))) return true;
+		if (
+			socialMediaDomains.some(
+				(socialDomain) => domain === socialDomain || domain.endsWith('.' + socialDomain)
+			)
+		)
+			return true;
 
 		return false;
 	}
 
 	// Calculate Longtail (Uncategorized)
-	function calculateLongtail(allEmails: EmailRecord[], categorizedEmailSets: {
-		lowEngagement: EmailRecord[];
-		storageHogs: EmailRecord[];
-		frequentSenders: EmailRecord[];
-		dormantSenders: EmailRecord[];
-	}) {
+	function calculateLongtail(
+		allEmails: EmailRecord[],
+		categorizedEmailSets: {
+			lowEngagement: EmailRecord[];
+			storageHogs: EmailRecord[];
+			frequentSenders: EmailRecord[];
+			dormantSenders: EmailRecord[];
+		}
+	) {
 		// Create a Set of categorized email IDs for fast lookup
 		const categorizedIds = new Set([
-			...categorizedEmailSets.lowEngagement.map(e => e.id),
-			...categorizedEmailSets.storageHogs.map(e => e.id),
-			...categorizedEmailSets.frequentSenders.map(e => e.id),
-			...categorizedEmailSets.dormantSenders.map(e => e.id)
+			...categorizedEmailSets.lowEngagement.map((e) => e.id),
+			...categorizedEmailSets.storageHogs.map((e) => e.id),
+			...categorizedEmailSets.frequentSenders.map((e) => e.id),
+			...categorizedEmailSets.dormantSenders.map((e) => e.id)
 		]);
 
-		const uncategorizedEmails = allEmails.filter(email => {
+		const uncategorizedEmails = allEmails.filter((email) => {
 			if (!email.detailsFetchedAt || !email.from) return false;
 
 			// Skip if already categorized by sender-based rules
@@ -1040,8 +1176,7 @@
 			return new Date(b.date).getTime() - new Date(a.date).getTime();
 		});
 
-		const totalSize = sortedEmails.reduce((sum, email) =>
-			sum + (email.sizeEstimate || 0), 0);
+		const totalSize = sortedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
 		return {
 			emailCount: sortedEmails.length,
@@ -1052,7 +1187,7 @@
 
 	// Calculate Protected
 	function calculateProtected(allEmails: EmailRecord[]) {
-		const protectedEmails = allEmails.filter(email => {
+		const protectedEmails = allEmails.filter((email) => {
 			if (!email.detailsFetchedAt || !email.from) return false;
 
 			// Check if email ID is specifically protected
@@ -1068,16 +1203,19 @@
 			const domainMatch = senderEmail.match(/@(.+)$/);
 			if (domainMatch) {
 				const domain = domainMatch[1].toLowerCase();
-				if (protectedDomains.some(protectedDomain =>
-					domain === protectedDomain || domain.endsWith('.' + protectedDomain)
-				)) return true;
+				if (
+					protectedDomains.some(
+						(protectedDomain) =>
+							domain === protectedDomain || domain.endsWith('.' + protectedDomain)
+					)
+				)
+					return true;
 			}
 
 			return false;
 		});
 
-		const totalSize = protectedEmails.reduce((sum, email) =>
-			sum + (email.sizeEstimate || 0), 0);
+		const totalSize = protectedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
 		return {
 			emailCount: protectedEmails.length,
@@ -1097,11 +1235,14 @@
 			const dbEmails = await emailDB.getAllEmails();
 
 			// Filter emails that have details and required fields (same as display filter)
-			const processedEmails = dbEmails.filter(email => email.detailsFetchedAt && email.from && email.subject);
+			const processedEmails = dbEmails.filter(
+				(email) => email.detailsFetchedAt && email.from && email.subject
+			);
 
 			// Set total email count and size for sidebar
 			totalEmailCount = processedEmails.length;
-			totalSizeMB = processedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
+			totalSizeMB =
+				processedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
 
 			// Calculate filters with real data
 			const lowEngagementData = calculateLowEngagementSenders(dbEmails);
@@ -1135,7 +1276,7 @@
 			};
 
 			// Update smart filters with real data
-			smartFiltersData = smartFilters.map(filter => {
+			smartFiltersData = smartFilters.map((filter) => {
 				if (filter.id === 'low-engagement') {
 					return {
 						...filter,
@@ -1213,7 +1354,7 @@
 
 			// Filter emails that have details and sort by date (newest first) - now load ALL emails
 			const filteredDBEmails = dbEmails
-				.filter(email => email.detailsFetchedAt && email.from && email.subject)
+				.filter((email) => email.detailsFetchedAt && email.from && email.subject)
 				.sort((a, b) => {
 					if (!a.date || !b.date) return 0;
 					return new Date(b.date).getTime() - new Date(a.date).getTime();
@@ -1234,29 +1375,41 @@
 	});
 </script>
 
-<div class="h-screen bg-gray-50 overflow-hidden">
+<div class="h-screen overflow-hidden bg-gray-50">
 	<div class="flex h-full">
 		<!-- Sidebar -->
-		<div class="w-80 bg-white border-r border-gray-200 h-full p-4 overflow-y-auto">
+		<div class="h-full w-80 overflow-y-auto border-r border-gray-200 bg-white p-4">
 			<nav class="space-y-2">
 				<!-- Inbox Section -->
 				<div>
 					<button
-						class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md cursor-pointer {currentFilter === 'inbox' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-900 hover:bg-gray-50'}"
+						class="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium {currentFilter ===
+						'inbox'
+							? 'bg-blue-600 text-white hover:bg-blue-700'
+							: 'text-gray-900 hover:bg-gray-50'}"
 						onclick={() => switchFilter('inbox', 'Inbox')}
 					>
 						<span>Inbox</span>
-						<span class="text-xs {currentFilter === 'inbox' ? 'text-blue-200' : 'text-gray-400'}">{inboxSizeMB < 1 ? inboxSizeMB.toFixed(2) : Math.round(inboxSizeMB)} MB</span>
+						<span class="text-xs {currentFilter === 'inbox' ? 'text-blue-200' : 'text-gray-400'}"
+							>{inboxSizeMB < 1 ? inboxSizeMB.toFixed(2) : Math.round(inboxSizeMB)} MB</span
+						>
 					</button>
-					<div class="ml-4 mt-1 space-y-1">
+					<div class="mt-1 ml-4 space-y-1">
 						{#each sidebarFiltersData as filter}
 							<button
-								class="flex items-center justify-between w-full px-3 py-2 text-sm rounded-md cursor-pointer {currentFilter === filter.id ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
+								class="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm {currentFilter ===
+								filter.id
+									? 'bg-blue-600 text-white hover:bg-blue-700'
+									: 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
 								onclick={() => switchFilter(filter.id, filter.title.replace('🚧 ', ''))}
 							>
 								<span class="truncate">{filter.title.replace('🚧 ', '')}</span>
-								<span class="text-xs {currentFilter === filter.id ? 'text-blue-200' : 'text-gray-400'}">
-									{filter.displaySize < 1 ? filter.displaySize.toFixed(2) : Math.round(filter.displaySize)} MB
+								<span
+									class="text-xs {currentFilter === filter.id ? 'text-blue-200' : 'text-gray-400'}"
+								>
+									{filter.displaySize < 1
+										? filter.displaySize.toFixed(2)
+										: Math.round(filter.displaySize)} MB
 								</span>
 							</button>
 						{/each}
@@ -1265,23 +1418,31 @@
 
 				<!-- Review Section -->
 				<button
-					class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md cursor-pointer {currentFilter === 'review' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-900 hover:bg-gray-50'}"
+					class="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium {currentFilter ===
+					'review'
+						? 'bg-blue-600 text-white hover:bg-blue-700'
+						: 'text-gray-900 hover:bg-gray-50'}"
 					onclick={() => switchFilter('review', 'Review Queue')}
 				>
 					<span>Review</span>
-					<span class="text-xs {currentFilter === 'review' ? 'text-blue-200' : 'text-gray-400'}">{reviewQueueSizeMB < 1 ? reviewQueueSizeMB.toFixed(2) : Math.round(reviewQueueSizeMB)} MB</span>
+					<span class="text-xs {currentFilter === 'review' ? 'text-blue-200' : 'text-gray-400'}"
+						>{reviewQueueSizeMB < 1 ? reviewQueueSizeMB.toFixed(2) : Math.round(reviewQueueSizeMB)} MB</span
+					>
 				</button>
 
 				<!-- Trash -->
-				<a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-gray-900 rounded-md hover:bg-gray-50 cursor-pointer">
+				<a
+					href="#"
+					class="flex cursor-pointer items-center rounded-md px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+				>
 					Trash
 				</a>
 			</nav>
 		</div>
 
 		<!-- Gmail-like email list -->
-		<div class="flex-1 flex flex-col bg-white rounded-lg shadow-sm min-h-0">
-			<div class="p-4 border-b flex-shrink-0">
+		<div class="flex min-h-0 flex-1 flex-col rounded-lg bg-white shadow-sm">
+			<div class="flex-shrink-0 border-b p-4">
 				<div class="flex items-center gap-4">
 					<h2 class="text-lg font-semibold text-gray-900">{currentView}</h2>
 					{#if !loading && filteredEmails.length > 0}
@@ -1295,7 +1456,14 @@
 							</div>
 							<div class="flex items-center gap-1">
 								<HardDrive size={16} />
-								<span>{(() => { const size = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024); return size < 1 ? size.toFixed(2) : Math.round(size); })()} MB</span>
+								<span
+									>{(() => {
+										const size =
+											filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) /
+											(1024 * 1024);
+										return size < 1 ? size.toFixed(2) : Math.round(size);
+									})()} MB</span
+								>
 								<Badge variant="secondary">
 									{sizePercentage.toFixed(1)}%
 								</Badge>
@@ -1306,16 +1474,15 @@
 			</div>
 
 			{#if loading}
-				<div class="p-8 text-center text-gray-500 flex-1">
-					Loading emails...
-				</div>
+				<div class="flex-1 p-8 text-center text-gray-500">Loading emails...</div>
 			{:else if groupedEmails.length === 0}
-				<div class="p-8 text-center text-gray-500 flex-1">
+				<div class="flex-1 p-8 text-center text-gray-500">
 					{#if filteredEmails.length === 0 && allEmails.length > 0}
 						{#if currentFilter === 'review'}
 							No emails in review queue yet.
 						{:else}
-							No eligible emails for this filter. All emails may have been moved to review queue or don't match the criteria.
+							No eligible emails for this filter. All emails may have been moved to review queue or
+							don't match the criteria.
 						{/if}
 					{:else}
 						No emails found. Run a scan to see your emails.
@@ -1323,7 +1490,7 @@
 				</div>
 			{:else}
 				<!-- Email list header -->
-				<div class="flex-shrink-0 bg-gray-50 border-b">
+				<div class="flex-shrink-0 border-b bg-gray-50">
 					<div class="flex items-center p-4 text-sm font-normal text-gray-700">
 						<div class="w-12 flex-shrink-0">
 							<input
@@ -1335,14 +1502,14 @@
 							/>
 						</div>
 						<div class="w-48 flex-shrink-0">Sender</div>
-						<div class="flex-1 min-w-0">Subject</div>
+						<div class="min-w-0 flex-1">Subject</div>
 						<div class="w-20 flex-shrink-0 text-center">Size</div>
 						<div class="w-20 flex-shrink-0 text-right">Date</div>
 					</div>
 				</div>
 
 				<!-- Virtual scrolling container -->
-				<div bind:this={parentElement} class="flex-1 overflow-auto min-h-0">
+				<div bind:this={parentElement} class="min-h-0 flex-1 overflow-auto">
 					{#if virtualizer}
 						<div style="height: {$virtualizer.getTotalSize()}px; width: 100%; position: relative;">
 							{#each $virtualizer.getVirtualItems() as row (row.index)}
@@ -1353,7 +1520,9 @@
 								>
 									{#if item.type === 'group'}
 										<!-- Group Header -->
-										<div class="flex items-center p-4 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-b border-gray-200 h-full">
+										<div
+											class="flex h-full items-center border-b border-gray-200 bg-gray-100 p-4 text-sm font-medium hover:bg-gray-200"
+										>
 											<div class="w-12 flex-shrink-0">
 												<input
 													type="checkbox"
@@ -1364,7 +1533,7 @@
 												/>
 											</div>
 											<div
-												class="w-4 flex-shrink-0 flex items-center justify-center cursor-pointer"
+												class="flex w-4 flex-shrink-0 cursor-pointer items-center justify-center"
 												onclick={() => toggleGroup(item.sender)}
 											>
 												{#if expandedGroups.has(item.sender)}
@@ -1374,10 +1543,10 @@
 												{/if}
 											</div>
 											<div
-												class="flex-1 min-w-0 px-2 cursor-pointer"
+												class="min-w-0 flex-1 cursor-pointer px-2"
 												onclick={() => toggleGroup(item.sender)}
 											>
-												<div class="text-gray-900 truncate" title={item.sender}>
+												<div class="truncate text-gray-900" title={item.sender}>
 													{item.sender} ({item.emailCount})
 												</div>
 											</div>
@@ -1390,8 +1559,10 @@
 										</div>
 									{:else}
 										<!-- Individual Email -->
-										<div class="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm font-normal border-b border-gray-100 h-full">
-											<div class="w-12 flex-shrink-0">
+										<div
+											class="flex h-full cursor-pointer items-center border-b border-gray-100 px-4 py-2 text-sm font-normal hover:bg-gray-50"
+										>
+											<div class="w-12 flex-shrink-0" onclick={(e) => e.stopPropagation()}>
 												<input
 													type="checkbox"
 													class="rounded border-gray-300"
@@ -1399,20 +1570,35 @@
 													onchange={() => toggleEmailSelection(item.email.id, item.sender)}
 												/>
 											</div>
-											<div class="w-48 flex-shrink-0">
-												<div class="text-gray-600 truncate" title={extractEmailAddress(item.email.from)}>
+											<div
+												class="w-48 flex-shrink-0"
+												onclick={() => openEmailInGmail(item.email.id)}
+											>
+												<div
+													class="truncate text-gray-600"
+													title={extractEmailAddress(item.email.from)}
+												>
 													{extractEmailAddress(item.email.from)}
 												</div>
 											</div>
-											<div class="flex-1 min-w-0 pr-4">
-												<div class="text-gray-900 truncate" title={item.email.subject}>
+											<div
+												class="min-w-0 flex-1 pr-4"
+												onclick={() => openEmailInGmail(item.email.id)}
+											>
+												<div class="truncate text-gray-900" title={item.email.subject}>
 													{item.email.subject || 'No subject'}
 												</div>
 											</div>
-											<div class="w-20 flex-shrink-0 text-center text-gray-600">
+											<div
+												class="w-20 flex-shrink-0 text-center text-gray-600"
+												onclick={() => openEmailInGmail(item.email.id)}
+											>
 												{formatSizeInMB(item.email.sizeEstimate)}
 											</div>
-											<div class="w-20 flex-shrink-0 text-right text-gray-600">
+											<div
+												class="w-20 flex-shrink-0 text-right text-gray-600"
+												onclick={() => openEmailInGmail(item.email.id)}
+											>
 												{formatDate(item.email.date)}
 											</div>
 										</div>
@@ -1426,34 +1612,40 @@
 		</div>
 
 		<!-- {#if isPaused || isComplete} -->
-			<!-- <RecentEmailsSection /> -->
+		<!-- <RecentEmailsSection /> -->
 		<!-- {/if} -->
-		</div>
+	</div>
 
 	<!-- Floating Selection Bar -->
 	{#if selectedEmailsData.count > 0}
-		<div class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
-			<div class="bg-black text-white px-4 py-4 rounded-lg shadow-lg flex items-center justify-between gap-4 min-w-3xl">
+		<div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 transform">
+			<div
+				class="flex min-w-3xl items-center justify-between gap-4 rounded-lg bg-black px-4 py-4 text-white shadow-lg"
+			>
 				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2">
-					<span class="font-medium">{selectedEmailsData.count}</span>
-					<span>selected</span>
-					{#if selectedEmailsData.count > 0}
-						<Badge variant="secondary">{selectedEmailsData.emailPercentage.toFixed(1)}%</Badge>
-					{/if}
-				</div>
-
-				{#if selectedEmailsData.count > 0}
-					<div class="flex items-center gap-2">
-						<span class="font-medium">{selectedEmailsData.totalSizeMB < 1 ? selectedEmailsData.totalSizeMB.toFixed(2) : Math.round(selectedEmailsData.totalSizeMB)} MB</span>
-						<Badge variant="secondary">{selectedEmailsData.sizePercentage.toFixed(1)}%</Badge>
+						<span class="font-medium">{selectedEmailsData.count}</span>
+						<span>selected</span>
+						{#if selectedEmailsData.count > 0}
+							<Badge variant="secondary">{selectedEmailsData.emailPercentage.toFixed(1)}%</Badge>
+						{/if}
 					</div>
-				{/if}
+
+					{#if selectedEmailsData.count > 0}
+						<div class="flex items-center gap-2">
+							<span class="font-medium"
+								>{selectedEmailsData.totalSizeMB < 1
+									? selectedEmailsData.totalSizeMB.toFixed(2)
+									: Math.round(selectedEmailsData.totalSizeMB)} MB</span
+							>
+							<Badge variant="secondary">{selectedEmailsData.sizePercentage.toFixed(1)}%</Badge>
+						</div>
+					{/if}
 				</div>
 
 				<button
 					type="button"
-					class="bg-white hover:bg-gray-100 text-black px-4 py-2 rounded-md text-sm font-medium transition-colors"
+					class="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-gray-100"
 					onclick={currentFilter === 'review' ? putBackFromReview : addToReviewQueue}
 				>
 					{currentFilter === 'review' ? 'Put Back' : 'Add to Review Queue'}

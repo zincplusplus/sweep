@@ -29,7 +29,7 @@ export type ScanProgress = {
 class EmailDB {
   private db: IDBDatabase | null = null;
   private readonly dbName = 'EmailScanDB';
-  private readonly version = 1;
+  private readonly version = 2;
 
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -55,6 +55,11 @@ class EmailDB {
         // Create scan progress table
         if (!db.objectStoreNames.contains('scanProgress')) {
           db.createObjectStore('scanProgress', { keyPath: 'id' });
+        }
+
+        // Create review queue table
+        if (!db.objectStoreNames.contains('reviewQueue')) {
+          db.createObjectStore('reviewQueue', { keyPath: 'id' });
         }
       };
     });
@@ -483,6 +488,52 @@ class EmailDB {
         }
       };
     });
+  }
+
+  // Review queue methods
+  async getReviewQueue(): Promise<string[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['reviewQueue'], 'readonly');
+      const store = transaction.objectStore('reviewQueue');
+      const request = store.get('review_queue');
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const result = request.result;
+        resolve(result ? result.emailIds || [] : []);
+      };
+    });
+  }
+
+  async setReviewQueue(emailIds: string[]): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['reviewQueue'], 'readwrite');
+      const store = transaction.objectStore('reviewQueue');
+      const request = store.put({
+        id: 'review_queue',
+        emailIds: emailIds
+      });
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async addToReviewQueue(emailIds: string[]): Promise<void> {
+    const currentQueue = await this.getReviewQueue();
+    const newQueue = [...new Set([...currentQueue, ...emailIds])];
+    return this.setReviewQueue(newQueue);
+  }
+
+  async removeFromReviewQueue(emailIds: string[]): Promise<void> {
+    const currentQueue = await this.getReviewQueue();
+    const emailIdSet = new Set(emailIds);
+    const newQueue = currentQueue.filter(id => !emailIdSet.has(id));
+    return this.setReviewQueue(newQueue);
   }
 }
 
