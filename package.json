@@ -37,6 +37,7 @@
 	},
 	"dependencies": {
 		"@googleapis/gmail": "^14.0.1",
+		"@tanstack/svelte-virtual": "^3.13.12",
 		"clsx": "^2.1.1",
 		"lucide-svelte": "^0.541.0",
 		"p-limit": "^7.1.0",

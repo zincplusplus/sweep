@@ -46,7 +46,7 @@
 			{/if}
 		</div>
 	</header>
-	<main class="p-6"><slot /></main>
+	<main><slot /></main>
 {:else}
 	<!-- tiny skeleton -->
 	<main class="p-6 text-sm text-gray-500">Checking session…</main>

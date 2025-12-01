@@ -12,6 +12,14 @@ export type EmailRecord = {
   detailsFetchedAt?: number; // when details were added
 };
 
+export type SenderStats = {
+  name: string;              // domain or email address
+  emailCount: number;
+  totalSize: number;         // in bytes
+  totalSizeFormatted: string; // e.g., "45.2 MB"
+  sampleEmails: EmailRecord[]; // up to 10 sample emails
+};
+
 export type ScanProgress = {
   id: 'current_scan';
   lastSuccessfulMonth: string; // "2020/3"
@@ -322,6 +330,159 @@ class EmailDB {
     };
 
     await this.addEmail(updatedEmail);
+  }
+
+  // Helper function to extract domain from email address
+  private extractDomain(fromField: string): string {
+    if (!fromField) return 'unknown';
+
+    // Extract email from "Name <email@domain.com>" format
+    const emailMatch = fromField.match(/<(.+?)>$/);
+    const email = emailMatch ? emailMatch[1] : fromField;
+
+    // Extract domain from email
+    const domainMatch = email.match(/@(.+)$/);
+    return domainMatch ? domainMatch[1].toLowerCase() : 'unknown';
+  }
+
+  // Helper function to extract display name from email
+  private extractDisplayName(fromField: string): string {
+    if (!fromField) return 'unknown';
+
+    const match = fromField.match(/^(.+?)<(.+?)>$/);
+    if (match) {
+      return match[1].trim();
+    }
+    return fromField;
+  }
+
+  // Helper function to format file size
+  private formatSize(bytes: number): string {
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    } else if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    } else {
+      return `${bytes} B`;
+    }
+  }
+
+  async getSendersByDomain(): Promise<SenderStats[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+
+      const domainStats = new Map<string, {
+        emailCount: number;
+        totalSize: number;
+        sampleEmails: EmailRecord[];
+      }>();
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const email = cursor.value as EmailRecord;
+
+          // Only process emails with details
+          if (email.detailsFetchedAt && email.from) {
+            const domain = this.extractDomain(email.from);
+
+            if (!domainStats.has(domain)) {
+              domainStats.set(domain, {
+                emailCount: 0,
+                totalSize: 0,
+                sampleEmails: []
+              });
+            }
+
+            const stats = domainStats.get(domain)!;
+            stats.emailCount++;
+            stats.totalSize += email.sizeEstimate || 0;
+
+            // Keep all emails
+            stats.sampleEmails.push(email);
+          }
+
+          cursor.continue();
+        } else {
+          // Convert to SenderStats array and sort by total size descending
+          const results: SenderStats[] = Array.from(domainStats.entries()).map(([domain, stats]) => ({
+            name: domain,
+            emailCount: stats.emailCount,
+            totalSize: stats.totalSize,
+            totalSizeFormatted: this.formatSize(stats.totalSize),
+            sampleEmails: stats.sampleEmails
+          })).sort((a, b) => b.totalSize - a.totalSize);
+
+          resolve(results);
+        }
+      };
+    });
+  }
+
+  async getSendersByIndividual(): Promise<SenderStats[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['emails'], 'readonly');
+      const store = transaction.objectStore('emails');
+      const request = store.openCursor();
+
+      const senderStats = new Map<string, {
+        emailCount: number;
+        totalSize: number;
+        sampleEmails: EmailRecord[];
+        actualEmail: string;
+      }>();
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const email = cursor.value as EmailRecord;
+
+          // Only process emails with details
+          if (email.detailsFetchedAt && email.from) {
+            const displayName = this.extractDisplayName(email.from);
+            const emailMatch = email.from.match(/<(.+?)>$/);
+            const actualEmail = emailMatch ? emailMatch[1] : email.from;
+
+            if (!senderStats.has(displayName)) {
+              senderStats.set(displayName, {
+                emailCount: 0,
+                totalSize: 0,
+                sampleEmails: [],
+                actualEmail: actualEmail
+              });
+            }
+
+            const stats = senderStats.get(displayName)!;
+            stats.emailCount++;
+            stats.totalSize += email.sizeEstimate || 0;
+
+            // Keep all emails
+            stats.sampleEmails.push(email);
+          }
+
+          cursor.continue();
+        } else {
+          // Convert to SenderStats array and sort by total size descending
+          const results: SenderStats[] = Array.from(senderStats.entries()).map(([sender, stats]) => ({
+            name: stats.actualEmail, // Use actual email address instead of display name
+            emailCount: stats.emailCount,
+            totalSize: stats.totalSize,
+            totalSizeFormatted: this.formatSize(stats.totalSize),
+            sampleEmails: stats.sampleEmails
+          })).sort((a, b) => b.totalSize - a.totalSize);
+
+          resolve(results);
+        }
+      };
+    });
   }
 }
 

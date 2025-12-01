@@ -340,12 +340,8 @@
 
 				console.log(`💾 Saved ${batchProcessedCount} email details. Progress: ${step2Progress}% (${emailParsedCount}/${emailFoundCount}) ${step2EstimatedTimeRemaining}`);
 
-				// Rate limiting: ensure 1 second between batch starts
-				const elapsedTime = Date.now() - batchStartTime;
-				const remainingDelay = Math.max(0, 1000 - elapsedTime);
-				if (remainingDelay > 0) {
-					await new Promise(resolve => setTimeout(resolve, remainingDelay));
-				}
+				// Rate limiting between batches (1 second)
+				await new Promise(resolve => setTimeout(resolve, 1000));
 			}
 
 		} catch (error) {

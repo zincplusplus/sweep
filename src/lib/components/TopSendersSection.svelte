@@ -1,152 +1,155 @@
 <script lang="ts">
-	import { Mail, Users, HardDrive, ChevronDown, ChevronUp, Search } from 'lucide-svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { Mail, Users, HardDrive, ChevronDown, ChevronUp, Search, ExternalLink } from 'lucide-svelte';
+	import { emailDB, type SenderStats } from '$lib/emaildb';
 
 	let groupBy: 'domain' | 'individual' = 'domain';
-	let sortBy: 'count' | 'size' = 'count';
+	let sortBy: 'count' | 'size' = 'size';
 	let sortDirection: 'asc' | 'desc' = 'desc';
 	let isSearchExpanded = false;
 	let searchTerm = '';
 	let expandedSenders = new Set<string>();
 
-	const mockEmails = {
-		'amazon.com': [
-			{ subject: 'Your order has shipped', date: '2024-01-15', size: '45 KB', from: 'Amazon<notifications@amazon.com>' },
-			{ subject: 'Amazon Prime Video: New releases', date: '2024-01-14', size: '123 KB', from: 'Amazon Prime<digital@amazon.com>' },
-			{ subject: 'Your Amazon.com order', date: '2024-01-13', size: '32 KB', from: 'Amazon Orders<orders@amazon.com>' },
-			{ subject: 'Recommended for you', date: '2024-01-12', size: '89 KB', from: 'Amazon Recommendations<recs@amazon.com>' }
-		],
-		'google.com': [
-			{ subject: 'Security alert for your Google Account', date: '2024-01-15', size: '28 KB', from: 'Google Security<security@google.com>' },
-			{ subject: 'Google Drive storage notification', date: '2024-01-14', size: '41 KB', from: 'Google Drive<drive@google.com>' },
-			{ subject: 'YouTube Premium trial ending', date: '2024-01-13', size: '67 KB', from: 'YouTube<youtube@google.com>' }
-		],
-		'github.com': [
-			{ subject: '[GitHub] Push to main branch', date: '2024-01-15', size: '15 KB', from: 'GitHub<noreply@github.com>' },
-			{ subject: 'Pull request merged', date: '2024-01-14', size: '22 KB', from: 'GitHub<noreply@github.com>' },
-			{ subject: 'New issue opened', date: '2024-01-13', size: '18 KB', from: 'GitHub Notifications<noreply@github.com>' }
-		],
-		'linkedin.com': [
-			{ subject: 'Weekly job alerts', date: '2024-01-15', size: '156 KB', from: 'LinkedIn Jobs<jobs@linkedin.com>' },
-			{ subject: 'Connection request accepted', date: '2024-01-14', size: '34 KB', from: 'LinkedIn<updates@linkedin.com>' }
-		],
-		'newsletter.com': [
-			{ subject: 'Weekly tech newsletter', date: '2024-01-15', size: '234 KB', from: 'Tech Weekly<weekly@newsletter.com>' },
-			{ subject: 'Special offer inside', date: '2024-01-12', size: '187 KB', from: 'Newsletter Deals<promos@newsletter.com>' }
-		]
-	};
+	let senderStats: SenderStats[] = [];
+	let isInitialLoading = true;
+	let refreshInterval: number;
 
-	const mockSendersDomain = [
-		{ name: 'amazon.com', emailCount: 342, totalSize: '45.2 MB' },
-		{ name: 'google.com', emailCount: 234, totalSize: '12.8 MB' },
-		{ name: 'github.com', emailCount: 156, totalSize: '8.4 MB' },
-		{ name: 'linkedin.com', emailCount: 89, totalSize: '15.7 MB' },
-		{ name: 'newsletter.com', emailCount: 67, totalSize: '22.3 MB' }
-	];
+	async function loadSenderData(isInitial = false) {
+		try {
+			if (isInitial) {
+				isInitialLoading = true;
+			}
 
-	// Function to extract display name from "Display Name<email@domain.com>" format
-	function getDisplayName(fromField: string): string {
-		const match = fromField.match(/^(.+?)<(.+?)>$/);
-		if (match) {
-			return match[1].trim(); // Return display name part
+			if (groupBy === 'domain') {
+				senderStats = await emailDB.getSendersByDomain();
+			} else {
+				senderStats = await emailDB.getSendersByIndividual();
+			}
+		} catch (error) {
+			console.error('Error loading sender data:', error);
+			senderStats = [];
+		} finally {
+			if (isInitial) {
+				isInitialLoading = false;
+			}
 		}
-		return fromField; // Return as-is if no display name
 	}
 
-	// Group individual emails by display name when possible
-	function getGroupedIndividualSenders() {
-		const grouped = new Map();
-		
-		// Process all emails to group by display name
-		Object.entries(mockEmails).forEach(([key, emails]) => {
-			emails.forEach(email => {
-				if (email.from) {
-					const displayName = getDisplayName(email.from);
-					const emailMatch = email.from.match(/<(.+?)>$/);
-					const actualEmail = emailMatch ? emailMatch[1] : email.from;
-					
-					if (!grouped.has(displayName)) {
-						grouped.set(displayName, {
-							name: displayName,
-							actualEmail: actualEmail,
-							emailCount: 0,
-							totalSize: 0,
-							emails: []
-						});
-					}
-					
-					const group = grouped.get(displayName);
-					group.emailCount += 1;
-					group.totalSize += parseFloat(email.size) || 0;
-					group.emails.push({ ...email, originalKey: key });
+	// Auto-refresh every 5 seconds
+	onMount(async () => {
+		await loadSenderData(true); // Initial load with loading state
+		refreshInterval = setInterval(() => loadSenderData(false), 5000); // Background refreshes
+	});
+
+	onDestroy(() => {
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+		}
+	});
+
+	// Reload data when groupBy changes
+	$: if (groupBy) {
+		loadSenderData(true); // Show loading when user changes groupBy
+	}
+
+
+	// Use real data instead of mock data
+	$: filteredSenders = senderStats.map(sender => {
+		const lowerSearchTerm = searchTerm.toLowerCase();
+
+		let emailsToShow = sender.sampleEmails;
+
+		// Filter emails by search term if provided
+		if (searchTerm.trim()) {
+			const senderMatches = sender.name.toLowerCase().includes(lowerSearchTerm);
+
+			if (!senderMatches) {
+				// If sender name doesn't match, filter emails by subject
+				const matchingEmails = sender.sampleEmails.filter(email =>
+					email.subject?.toLowerCase().includes(lowerSearchTerm)
+				);
+
+				if (matchingEmails.length === 0) {
+					return null; // No matches, exclude this sender
 				}
-			});
+
+				emailsToShow = matchingEmails;
+			}
+		}
+
+		// Sort emails by current sort criteria
+		const sortedEmails = [...emailsToShow].sort((a, b) => {
+			let aVal, bVal;
+			if (sortBy === 'count') {
+				// For email count, we can sort by date as a proxy (newer emails first when desc)
+				aVal = new Date(a.date || 0).getTime();
+				bVal = new Date(b.date || 0).getTime();
+			} else {
+				// Sort by email size
+				aVal = a.sizeEstimate || 0;
+				bVal = b.sizeEstimate || 0;
+			}
+			return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
 		});
 
-		// Convert sizes back to readable format and create sender objects
-		return Array.from(grouped.values()).map(group => ({
-			name: group.name,
-			actualEmail: group.actualEmail,
-			emailCount: group.emailCount,
-			totalSize: group.totalSize > 1000 ? `${(group.totalSize/1000).toFixed(1)} MB` : `${group.totalSize.toFixed(0)} KB`
-		}));
-	}
+		// Recalculate sender stats based on filtered emails
+		const filteredEmailCount = sortedEmails.length;
+		const filteredTotalSize = sortedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0);
 
-	const mockSendersIndividual = getGroupedIndividualSenders();
-
-	$: currentSenders = groupBy === 'domain' ? mockSendersDomain : mockSendersIndividual;
-	$: filteredSenders = currentSenders.map(sender => {
-		const lowerSearchTerm = searchTerm.toLowerCase();
-		
-		// For individual grouping (by display name), we need to find all matching emails
-		let senderEmails = [];
-		if (groupBy === 'individual') {
-			// Find all emails that match this display name
-			Object.values(mockEmails).forEach(emails => {
-				emails.forEach(email => {
-					if (email.from && getDisplayName(email.from) === sender.name) {
-						senderEmails.push(email);
-					}
-				});
-			});
+		// Format the filtered size
+		let filteredSizeFormatted;
+		const megabytes = filteredTotalSize / (1024 * 1024);
+		if (megabytes >= 1024) {
+			filteredSizeFormatted = `${(megabytes / 1024).toFixed(1)} GB`;
+		} else if (megabytes >= 0.1) {
+			filteredSizeFormatted = `${megabytes.toFixed(1)} MB`;
 		} else {
-			// For domain grouping, use the original logic
-			senderEmails = mockEmails[sender.name] || [];
+			filteredSizeFormatted = `${(filteredTotalSize / 1024).toFixed(1)} KB`;
 		}
-		
-		// If no search term, return sender with all emails
-		if (!searchTerm.trim()) {
-			return { ...sender, filteredEmails: senderEmails };
-		}
-		
-		// Check if sender name matches
-		const senderMatches = sender.name.toLowerCase().includes(lowerSearchTerm);
-		
-		// Filter emails by subject
-		const matchingEmails = senderEmails.filter(email => 
-			email.subject.toLowerCase().includes(lowerSearchTerm)
-		);
-		
-		// Include sender if either sender name matches OR has matching emails
-		if (senderMatches || matchingEmails.length > 0) {
-			return {
-				...sender,
-				filteredEmails: senderMatches ? senderEmails : matchingEmails
-			};
-		}
-		
-		return null;
+
+		return {
+			...sender,
+			filteredEmails: sortedEmails,
+			// Override stats with filtered values
+			emailCount: filteredEmailCount,
+			totalSize: filteredTotalSize,
+			totalSizeFormatted: filteredSizeFormatted
+		};
 	}).filter(sender => sender !== null);
+
 	$: sortedSenders = [...filteredSenders].sort((a, b) => {
 		let aVal, bVal;
 		if (sortBy === 'count') {
 			aVal = a.emailCount;
 			bVal = b.emailCount;
 		} else {
-			aVal = parseFloat(a.totalSize);
-			bVal = parseFloat(b.totalSize);
+			aVal = a.totalSize; // Use raw bytes for accurate sorting
+			bVal = b.totalSize;
 		}
 		return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
 	});
+
+	// Calculate summary stats for currently displayed senders
+	$: summaryStats = (() => {
+		const totalSenders = sortedSenders.length;
+		const totalEmails = sortedSenders.reduce((sum, sender) => sum + sender.emailCount, 0);
+		const totalBytes = sortedSenders.reduce((sum, sender) => sum + sender.totalSize, 0);
+
+		// Format total size
+		let totalSizeFormatted;
+		const megabytes = totalBytes / (1024 * 1024);
+		if (megabytes >= 1024) {
+			totalSizeFormatted = `${(megabytes / 1024).toFixed(1)} GB`;
+		} else {
+			totalSizeFormatted = `${megabytes.toFixed(1)} MB`;
+		}
+
+		return {
+			totalSenders,
+			totalEmails,
+			totalSizeFormatted
+		};
+	})();
 
 	function toggleSort(field: 'count' | 'size') {
 		if (sortBy === field) {
@@ -171,6 +174,11 @@
 			expandedSenders.add(senderName);
 		}
 		expandedSenders = expandedSenders; // trigger reactivity
+	}
+
+	function openInGmail(email: any) {
+		const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.id}`;
+		window.open(gmailUrl, '_blank');
 	}
 </script>
 
@@ -205,15 +213,15 @@
 						</div>
 					{/if}
 				</div>
-				<select 
-					bind:value={groupBy} 
+				<select
+					bind:value={groupBy}
 					class="border rounded-lg px-3 py-2 text-sm bg-white hover:bg-gray-50 transition-colors"
 				>
 					<option value="domain">Group by domain</option>
 					<option value="individual">Group by address</option>
 				</select>
-				<select 
-					bind:value={sortBy} 
+				<select
+					bind:value={sortBy}
 					class="border rounded-lg px-3 py-2 text-sm bg-white hover:bg-gray-50 transition-colors"
 				>
 					<option value="count">Sort by count</option>
@@ -264,9 +272,38 @@
 		</div>
 	</div>
 
+	<!-- Summary Stats -->
+	{#if !isInitialLoading && sortedSenders.length > 0}
+		<div class="bg-blue-50 border-b px-4 py-3">
+			<div class="grid grid-cols-12 gap-4 text-sm">
+				<div class="col-span-6 text-blue-800">
+					<span class="font-medium">{summaryStats.totalSenders.toLocaleString()}</span>
+					{groupBy === 'domain' ? 'domains' : 'addresses'} shown
+				</div>
+				<div class="col-span-3 text-blue-800">
+					<span class="font-medium">{summaryStats.totalEmails.toLocaleString()}</span>
+					emails total
+				</div>
+				<div class="col-span-3 text-blue-800">
+					<span class="font-medium">{summaryStats.totalSizeFormatted}</span>
+					total size
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Table Body -->
 	<div class="divide-y">
-		{#each sortedSenders as sender}
+		{#if isInitialLoading}
+			<div class="p-8 text-center">
+				<div class="text-gray-500">Loading sender data...</div>
+			</div>
+		{:else if sortedSenders.length === 0}
+			<div class="p-8 text-center">
+				<div class="text-gray-500">No email data available yet. Complete the scan to see sender statistics.</div>
+			</div>
+		{:else}
+			{#each sortedSenders as sender}
 			<div>
 				<!-- Sender Row -->
 				<div class="p-4 hover:bg-gray-50 transition-colors">
@@ -286,28 +323,35 @@
 							{sender.emailCount.toLocaleString()} emails
 						</div>
 						<div class="col-span-3 text-gray-600">
-							{sender.totalSize}
+							{sender.totalSizeFormatted}
 						</div>
 					</div>
 				</div>
-				
+
 				<!-- Expanded Emails -->
 				{#if expandedSenders.has(sender.name) && sender.filteredEmails}
 					<div class="bg-gray-50 border-t">
 						{#each sender.filteredEmails as email}
-							<div class="px-4 py-3 ml-6 border-b border-gray-200 last:border-b-0">
+							<div
+								class="px-4 py-3 ml-6 border-b border-gray-200 last:border-b-0 cursor-pointer hover:bg-gray-100 transition-colors"
+								onclick={() => openInGmail(email)}
+								title="Click to open in Gmail"
+							>
 								<div class="grid grid-cols-12 gap-4 items-center text-sm">
 									<div class="col-span-6">
-										<div class="text-gray-900 font-medium truncate">{email.subject}</div>
+										<div class="flex items-center gap-2">
+											<div class="text-gray-900 font-medium truncate">{email.subject}</div>
+											<ExternalLink class="h-3 w-3 text-gray-400 flex-shrink-0" />
+										</div>
 										{#if email.from}
 											<div class="text-gray-500 text-xs mt-1">{email.from}</div>
 										{/if}
 									</div>
 									<div class="col-span-3 text-gray-500">
-										{email.date}
+										{email.date || 'Unknown date'}
 									</div>
 									<div class="col-span-3 text-gray-500">
-										{email.size}
+										{email.sizeEstimate ? `${(email.sizeEstimate / 1024).toFixed(1)} KB` : 'Unknown size'}
 									</div>
 								</div>
 							</div>
@@ -315,6 +359,7 @@
 					</div>
 				{/if}
 			</div>
-		{/each}
+			{/each}
+		{/if}
 	</div>
 </div>
