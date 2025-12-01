@@ -264,14 +264,80 @@
 		return virtualItems;
 	}
 
-	// Toggle group expansion
+	// Toggle group expansion with scroll preservation
 	function toggleGroup(sender: string) {
-		if (expandedGroups.has(sender)) {
+		if (!parentElement) return;
+
+		// Store current scroll state before toggling
+		const currentScrollTop = parentElement.scrollTop;
+		const clickedGroupIndex = groupedEmails.findIndex(item =>
+			item.type === 'group' && item.sender === sender
+		);
+
+		// Toggle the group state
+		const wasExpanded = expandedGroups.has(sender);
+		if (wasExpanded) {
 			expandedGroups.delete(sender);
 		} else {
 			expandedGroups.add(sender);
 		}
 		expandedGroups = expandedGroups; // Trigger reactivity
+
+		// Wait a bit for the virtual list to recalculate, then adjust scroll
+		setTimeout(() => {
+			if (!parentElement || !virtualizer) return;
+
+			// Find the group header position after the change
+			const newGroupIndex = groupedEmails.findIndex(item =>
+				item.type === 'group' && item.sender === sender
+			);
+
+			if (newGroupIndex !== -1) {
+				if (wasExpanded) {
+					// COLLAPSING: Try to maintain the exact scroll position
+					// Calculate how much content was removed
+					const collapsedGroup = groupedEmails.find(item =>
+						item.type === 'group' && item.sender === sender
+					);
+
+					if (collapsedGroup) {
+						// Calculate the new position where the group header should be
+						const newGroupHeaderPosition = newGroupIndex * 48;
+
+						// Check if we can maintain current scroll position
+						const totalContentHeight = groupedEmails.length * 48;
+						const viewportHeight = parentElement.clientHeight;
+						const maxScrollTop = Math.max(0, totalContentHeight - viewportHeight);
+
+						// If current scroll position is valid after collapse, keep it
+						if (currentScrollTop <= maxScrollTop) {
+							// Keep the exact same scroll position
+							parentElement.scrollTo({
+								top: currentScrollTop,
+								behavior: 'instant'
+							});
+						} else {
+							// If current position would be too far down, scroll to show the group header
+							parentElement.scrollTo({
+								top: Math.max(0, newGroupHeaderPosition - 48),
+								behavior: 'smooth'
+							});
+						}
+					}
+				} else {
+					// EXPANDING: Try to keep the group header visible
+					const targetScrollTop = newGroupIndex * 48;
+
+					// Only adjust scroll if it would help keep the group in view
+					if (Math.abs(currentScrollTop - targetScrollTop) > 48) {
+						parentElement.scrollTo({
+							top: Math.max(0, targetScrollTop - 48),
+							behavior: 'smooth'
+						});
+					}
+				}
+			}
+		}, 16); // One frame delay to let virtual scroller update
 	}
 
 	// Toggle selection of entire group
@@ -956,7 +1022,7 @@
 				<div>
 					<button
 						class="flex items-center justify-between w-full px-3 py-2 text-sm font-medium rounded-md cursor-pointer {currentFilter === 'inbox' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-900 hover:bg-gray-50'}"
-						on:click={() => switchFilter('inbox', 'Inbox')}
+						onclick={() => switchFilter('inbox', 'Inbox')}
 					>
 						<span>Inbox</span>
 						<span class="text-xs {currentFilter === 'inbox' ? 'text-blue-200' : 'text-gray-400'}">{totalSizeMB < 1 ? totalSizeMB.toFixed(2) : Math.round(totalSizeMB)} MB</span>
@@ -965,7 +1031,7 @@
 						{#each smartFiltersData.length > 0 ? smartFiltersData : smartFilters as filter}
 							<button
 								class="flex items-center justify-between w-full px-3 py-2 text-sm rounded-md cursor-pointer {currentFilter === filter.id ? 'bg-blue-600 text-white hover:bg-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}"
-								on:click={() => switchFilter(filter.id, filter.title.replace('🚧 ', ''))}
+								onclick={() => switchFilter(filter.id, filter.title.replace('🚧 ', ''))}
 							>
 								<span class="truncate">{filter.title.replace('🚧 ', '')}</span>
 								<span class="text-xs {currentFilter === filter.id ? 'text-blue-200' : 'text-gray-400'}">{filter.totalSize < 1 ? filter.totalSize.toFixed(2) : Math.round(filter.totalSize)} MB</span>
@@ -1053,12 +1119,12 @@
 													class="rounded border-gray-300"
 													checked={selectedGroups.has(item.sender)}
 													indeterminate={isGroupPartiallySelected(item.sender, item.emails)}
-													on:change={() => toggleGroupSelection(item.sender, item.emails)}
+													onchange={() => toggleGroupSelection(item.sender, item.emails)}
 												/>
 											</div>
 											<div
 												class="w-4 flex-shrink-0 flex items-center justify-center cursor-pointer"
-												on:click={() => toggleGroup(item.sender)}
+												onclick={() => toggleGroup(item.sender)}
 											>
 												{#if expandedGroups.has(item.sender)}
 													<ChevronDown size={16} class="text-gray-600" />
@@ -1068,7 +1134,7 @@
 											</div>
 											<div
 												class="flex-1 min-w-0 px-2 cursor-pointer"
-												on:click={() => toggleGroup(item.sender)}
+												onclick={() => toggleGroup(item.sender)}
 											>
 												<div class="text-gray-900 truncate" title={item.sender}>
 													{item.sender} ({item.emailCount})
@@ -1089,7 +1155,7 @@
 													type="checkbox"
 													class="rounded border-gray-300"
 													checked={selectedEmails.has(item.email.id)}
-													on:change={() => toggleEmailSelection(item.email.id, item.sender)}
+													onchange={() => toggleEmailSelection(item.email.id, item.sender)}
 												/>
 											</div>
 											<div class="w-48 flex-shrink-0">
