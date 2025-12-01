@@ -5,7 +5,7 @@
 	// import RecentEmailsSection from '$lib/components/RecentEmailsSection.svelte';
 	import TopSendersSection from '$lib/components/TopSendersSection.svelte';
 	import { emailDB, type EmailRecord } from '$lib/emaildb';
-	import { Mail, HardDrive, ChevronDown, ChevronRight } from 'lucide-svelte';
+	import { Mail, HardDrive, ChevronDown, ChevronRight, Search } from 'lucide-svelte';
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
 	import { Badge } from '$lib/components/ui/badge';
 
@@ -14,6 +14,8 @@
 	let emails: EmailRecord[] = [];
 	let allEmails: EmailRecord[] = []; // Store all emails for virtual scrolling
 	let filteredEmails: EmailRecord[] = []; // Currently filtered emails for display
+	let baseFilteredEmails: EmailRecord[] = []; // Base emails for current filter before search
+	let searchQuery = ''; // Search query
 	let groupedEmails: any[] = []; // Emails grouped by sender for virtual scrolling
 	let expandedGroups = new Set<string>(); // Track which groups are expanded
 	let selectedEmails = new Set<string>(); // Track selected individual emails
@@ -197,6 +199,15 @@
 	let parentElement: HTMLElement;
 	let virtualizer: any;
 
+	// Filter emails based on search query
+	$: filteredEmails = searchQuery
+		? baseFilteredEmails.filter(
+				(email) =>
+					email.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					email.from?.toLowerCase().includes(searchQuery.toLowerCase())
+			)
+		: baseFilteredEmails;
+
 	// Group emails by sender and create virtual list items (reactive to both filteredEmails and expandedGroups)
 	$: {
 		if (filteredEmails.length > 0) {
@@ -225,61 +236,62 @@
 	function switchFilter(filterId: string, filterName: string) {
 		currentFilter = filterId;
 		currentView = filterName;
+		searchQuery = ''; // Clear search when switching filters
 
 		switch (filterId) {
 			case 'inbox':
-				filteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
+				baseFilteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
 				break;
 			case 'low-engagement':
-				filteredEmails = (filterResults.lowEngagement?.emails || []).filter(
+				baseFilteredEmails = (filterResults.lowEngagement?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'old-news':
-				filteredEmails = (filterResults.oldNews?.emails || []).filter(
+				baseFilteredEmails = (filterResults.oldNews?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'storage-hogs':
-				filteredEmails = (filterResults.storageHogs?.emails || []).filter(
+				baseFilteredEmails = (filterResults.storageHogs?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'frequent-senders':
-				filteredEmails = (filterResults.frequentSenders?.emails || []).filter(
+				baseFilteredEmails = (filterResults.frequentSenders?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'dormant-senders':
-				filteredEmails = (filterResults.dormantSenders?.emails || []).filter(
+				baseFilteredEmails = (filterResults.dormantSenders?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'spammy-tlds':
-				filteredEmails = (filterResults.spammyTLDs?.emails || []).filter(
+				baseFilteredEmails = (filterResults.spammyTLDs?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'social-media':
-				filteredEmails = (filterResults.socialMedia?.emails || []).filter(
+				baseFilteredEmails = (filterResults.socialMedia?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'longtail':
-				filteredEmails = (filterResults.longtail?.emails || []).filter(
+				baseFilteredEmails = (filterResults.longtail?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'protected':
-				filteredEmails = (filterResults.protected?.emails || []).filter(
+				baseFilteredEmails = (filterResults.protected?.emails || []).filter(
 					(email) => !reviewQueue.has(email.id)
 				);
 				break;
 			case 'review':
-				filteredEmails = allEmails.filter((email) => reviewQueue.has(email.id));
+				baseFilteredEmails = allEmails.filter((email) => reviewQueue.has(email.id));
 				break;
 			default:
-				filteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
+				baseFilteredEmails = allEmails.filter((email) => !reviewQueue.has(email.id));
 		}
 	}
 
@@ -1366,6 +1378,7 @@
 
 			// Initialize with inbox view (all emails)
 			filteredEmails = filteredDBEmails;
+			baseFilteredEmails = filteredDBEmails;
 
 			loading = false;
 		} catch (error) {
@@ -1470,6 +1483,15 @@
 							</div>
 						</div>
 					{/if}
+					<div class="relative ml-auto">
+						<Search class="absolute top-2.5 left-2.5 h-4 w-4 text-gray-500" />
+						<input
+							type="text"
+							placeholder="Search..."
+							bind:value={searchQuery}
+							class="h-9 w-64 rounded-md border border-gray-200 bg-gray-50 pr-4 pl-9 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+						/>
+					</div>
 				</div>
 			</div>
 
