@@ -5,14 +5,19 @@
 	// import RecentEmailsSection from '$lib/components/RecentEmailsSection.svelte';
 	import TopSendersSection from '$lib/components/TopSendersSection.svelte';
 	import { emailDB, type EmailRecord } from '$lib/emaildb';
-	import { Mail, HardDrive } from 'lucide-svelte';
+	import { Mail, HardDrive, ChevronDown, ChevronRight } from 'lucide-svelte';
 	import { createVirtualizer } from '@tanstack/svelte-virtual';
+	import { Badge } from '$lib/components/ui/badge';
 
 	// let isPaused = true;
 	// let isComplete = false;
 	let emails: EmailRecord[] = [];
 	let allEmails: EmailRecord[] = []; // Store all emails for virtual scrolling
 	let filteredEmails: EmailRecord[] = []; // Currently filtered emails for display
+	let groupedEmails: any[] = []; // Emails grouped by sender for virtual scrolling
+	let expandedGroups = new Set<string>(); // Track which groups are expanded
+	let selectedEmails = new Set<string>(); // Track selected individual emails
+	let selectedGroups = new Set<string>(); // Track groups with all emails selected
 	let loading = true;
 	let smartFiltersData: any[] = [];
 	let filterResults: any = {}; // Store all filter calculation results
@@ -21,16 +26,47 @@
 	let currentView = 'Inbox'; // Track which section/rule is currently being viewed
 	let currentFilter = 'inbox'; // Track current filter selection
 
+	// Calculate percentages of emails and size shown vs total
+	$: emailPercentage = totalEmailCount > 0 ? ((filteredEmails.length / totalEmailCount) * 100) : 0;
+	$: sizePercentage = totalSizeMB > 0 ? ((filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024)) / totalSizeMB * 100) : 0;
+
+	// Debug logging for percentage calculations
+	$: if (filteredEmails.length > 0) {
+		console.log('=== Percentage Debug ===');
+		console.log('Current filter:', currentFilter);
+		console.log('Current view:', currentView);
+		console.log('Filtered emails count:', filteredEmails.length);
+		console.log('Total email count:', totalEmailCount);
+		console.log('Email percentage:', emailPercentage.toFixed(1) + '%');
+
+		const filteredSizeMB = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
+		console.log('Filtered size MB:', filteredSizeMB.toFixed(2));
+		console.log('Total size MB:', totalSizeMB.toFixed(2));
+		console.log('Size percentage:', sizePercentage.toFixed(1) + '%');
+		console.log('========================');
+	}
+
 	// Virtual scrolling setup
 	let parentElement: HTMLElement;
 	let virtualizer: any;
 
-	// Create virtualizer when filtered emails change
-	$: if (parentElement && filteredEmails.length > 0) {
+	// Group emails by sender and create virtual list items (reactive to both filteredEmails and expandedGroups)
+	$: {
+		if (filteredEmails.length > 0) {
+			groupedEmails = groupEmailsBySender(filteredEmails);
+			console.log('Grouped emails:', groupedEmails.length, 'items');
+			console.log('Expanded groups:', Array.from(expandedGroups));
+		}
+		// Reference expandedGroups to make this reactive statement depend on it
+		expandedGroups.size;
+	}
+
+	// Create virtualizer when grouped emails change
+	$: if (parentElement && groupedEmails.length > 0) {
 		virtualizer = createVirtualizer({
-			count: filteredEmails.length,
+			count: groupedEmails.length,
 			getScrollElement: () => parentElement,
-			estimateSize: () => 60, // Estimated row height in pixels
+			estimateSize: () => 48, // Fixed height for all rows (p-4 = 32px + text ~24px)
 			overscan: 5, // Render 5 extra items outside viewport
 		});
 	}
@@ -171,6 +207,118 @@
 			color: 'bg-emerald-50 border-emerald-200 text-emerald-700'
 		}
 	];
+
+	// Group emails by sender for virtual scrolling
+	function groupEmailsBySender(emails: EmailRecord[]) {
+		const groups = new Map<string, EmailRecord[]>();
+
+		// Group emails by sender
+		emails.forEach(email => {
+			const senderEmail = extractEmailAddress(email.from);
+			if (!senderEmail) return;
+
+			if (!groups.has(senderEmail)) {
+				groups.set(senderEmail, []);
+			}
+			groups.get(senderEmail)!.push(email);
+		});
+
+		// Sort groups by total size (descending)
+		const sortedGroups = Array.from(groups.entries())
+			.map(([sender, senderEmails]) => ({
+				sender,
+				emails: senderEmails,
+				totalSize: senderEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0)
+			}))
+			.sort((a, b) => b.totalSize - a.totalSize);
+
+		// Convert to flat list for virtual scrolling
+		const virtualItems: any[] = [];
+
+		for (const group of sortedGroups) {
+			// Add group header
+			virtualItems.push({
+				type: 'group',
+				sender: group.sender,
+				emailCount: group.emails.length,
+				totalSize: group.totalSize,
+				emails: group.emails
+			});
+
+			// Add individual emails if group is expanded (sorted by size descending)
+			if (expandedGroups.has(group.sender)) {
+				const sortedEmails = [...group.emails].sort((a, b) =>
+					(b.sizeEstimate || 0) - (a.sizeEstimate || 0)
+				);
+
+				sortedEmails.forEach(email => {
+					virtualItems.push({
+						type: 'email',
+						email,
+						sender: group.sender
+					});
+				});
+			}
+		}
+
+		return virtualItems;
+	}
+
+	// Toggle group expansion
+	function toggleGroup(sender: string) {
+		if (expandedGroups.has(sender)) {
+			expandedGroups.delete(sender);
+		} else {
+			expandedGroups.add(sender);
+		}
+		expandedGroups = expandedGroups; // Trigger reactivity
+	}
+
+	// Toggle selection of entire group
+	function toggleGroupSelection(sender: string, emails: EmailRecord[]) {
+		const allSelected = emails.every(email => selectedEmails.has(email.id));
+
+		if (allSelected) {
+			// Unselect all emails in group
+			emails.forEach(email => selectedEmails.delete(email.id));
+			selectedGroups.delete(sender);
+		} else {
+			// Select all emails in group
+			emails.forEach(email => selectedEmails.add(email.id));
+			selectedGroups.add(sender);
+		}
+
+		selectedEmails = selectedEmails; // Trigger reactivity
+		selectedGroups = selectedGroups;
+	}
+
+	// Toggle selection of individual email
+	function toggleEmailSelection(emailId: string, sender: string) {
+		if (selectedEmails.has(emailId)) {
+			selectedEmails.delete(emailId);
+		} else {
+			selectedEmails.add(emailId);
+		}
+
+		// Check if all emails in group are now selected
+		const groupEmails = groupedEmails.find(item => item.type === 'group' && item.sender === sender)?.emails || [];
+		const allSelected = groupEmails.every(email => selectedEmails.has(email.id));
+
+		if (allSelected) {
+			selectedGroups.add(sender);
+		} else {
+			selectedGroups.delete(sender);
+		}
+
+		selectedEmails = selectedEmails; // Trigger reactivity
+		selectedGroups = selectedGroups;
+	}
+
+	// Check if group is partially selected
+	function isGroupPartiallySelected(sender: string, emails: EmailRecord[]): boolean {
+		const selectedCount = emails.filter(email => selectedEmails.has(email.id)).length;
+		return selectedCount > 0 && selectedCount < emails.length;
+	}
 
 	// Helper function to format size in MB
 	function formatSizeInMB(bytes: number | undefined): string {
@@ -661,8 +809,10 @@
 			await emailDB.init();
 			const dbEmails = await emailDB.getAllEmails();
 
+			// Filter emails that have details and required fields (same as display filter)
+			const processedEmails = dbEmails.filter(email => email.detailsFetchedAt && email.from && email.subject);
+
 			// Set total email count and size for sidebar
-			const processedEmails = dbEmails.filter(email => email.detailsFetchedAt);
 			totalEmailCount = processedEmails.length;
 			totalSizeMB = processedEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024);
 
@@ -846,10 +996,16 @@
 							<div class="flex items-center gap-1">
 								<Mail size={16} />
 								<span>{filteredEmails.length.toLocaleString()}</span>
+								<Badge variant="secondary">
+									{emailPercentage.toFixed(1)}%
+								</Badge>
 							</div>
 							<div class="flex items-center gap-1">
 								<HardDrive size={16} />
 								<span>{(() => { const size = filteredEmails.reduce((sum, email) => sum + (email.sizeEstimate || 0), 0) / (1024 * 1024); return size < 1 ? size.toFixed(2) : Math.round(size); })()} MB</span>
+								<Badge variant="secondary">
+									{sizePercentage.toFixed(1)}%
+								</Badge>
 							</div>
 						</div>
 					{/if}
@@ -860,7 +1016,7 @@
 				<div class="p-8 text-center text-gray-500 flex-1">
 					Loading emails...
 				</div>
-			{:else if filteredEmails.length === 0}
+			{:else if groupedEmails.length === 0}
 				<div class="p-8 text-center text-gray-500 flex-1">
 					No emails found. Run a scan to see your emails.
 				</div>
@@ -883,30 +1039,77 @@
 					{#if virtualizer}
 						<div style="height: {$virtualizer.getTotalSize()}px; width: 100%; position: relative;">
 							{#each $virtualizer.getVirtualItems() as row (row.index)}
-								{@const email = filteredEmails[row.index]}
+								{@const item = groupedEmails[row.index]}
 								<div
-									class="flex items-center p-4 hover:bg-gray-50 cursor-pointer text-sm font-normal absolute top-0 left-0 w-full border-b border-gray-100"
+									class="absolute top-0 left-0 w-full"
 									style="height: {row.size}px; transform: translateY({row.start}px);"
 								>
-									<div class="w-12 flex-shrink-0">
-										<input type="checkbox" class="rounded border-gray-300" />
-									</div>
-									<div class="w-48 flex-shrink-0">
-										<div class="text-gray-600 truncate" title={extractEmailAddress(email.from)}>
-											{extractEmailAddress(email.from)}
+									{#if item.type === 'group'}
+										<!-- Group Header -->
+										<div class="flex items-center p-4 bg-gray-100 hover:bg-gray-200 text-sm font-medium border-b border-gray-200 h-full">
+											<div class="w-12 flex-shrink-0">
+												<input
+													type="checkbox"
+													class="rounded border-gray-300"
+													checked={selectedGroups.has(item.sender)}
+													indeterminate={isGroupPartiallySelected(item.sender, item.emails)}
+													on:change={() => toggleGroupSelection(item.sender, item.emails)}
+												/>
+											</div>
+											<div
+												class="w-4 flex-shrink-0 flex items-center justify-center cursor-pointer"
+												on:click={() => toggleGroup(item.sender)}
+											>
+												{#if expandedGroups.has(item.sender)}
+													<ChevronDown size={16} class="text-gray-600" />
+												{:else}
+													<ChevronRight size={16} class="text-gray-600" />
+												{/if}
+											</div>
+											<div
+												class="flex-1 min-w-0 px-2 cursor-pointer"
+												on:click={() => toggleGroup(item.sender)}
+											>
+												<div class="text-gray-900 truncate" title={item.sender}>
+													{item.sender} ({item.emailCount})
+												</div>
+											</div>
+											<div class="w-20 flex-shrink-0 text-center text-gray-600">
+												{formatSizeInMB(item.totalSize)}
+											</div>
+											<div class="w-20 flex-shrink-0 text-right text-gray-600">
+												<!-- Empty space to align with date column -->
+											</div>
 										</div>
-									</div>
-									<div class="flex-1 min-w-0 pr-4">
-										<div class="text-gray-900 truncate" title={email.subject}>
-											{email.subject || 'No subject'}
+									{:else}
+										<!-- Individual Email -->
+										<div class="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm font-normal border-b border-gray-100 h-full">
+											<div class="w-12 flex-shrink-0">
+												<input
+													type="checkbox"
+													class="rounded border-gray-300"
+													checked={selectedEmails.has(item.email.id)}
+													on:change={() => toggleEmailSelection(item.email.id, item.sender)}
+												/>
+											</div>
+											<div class="w-48 flex-shrink-0">
+												<div class="text-gray-600 truncate" title={extractEmailAddress(item.email.from)}>
+													{extractEmailAddress(item.email.from)}
+												</div>
+											</div>
+											<div class="flex-1 min-w-0 pr-4">
+												<div class="text-gray-900 truncate" title={item.email.subject}>
+													{item.email.subject || 'No subject'}
+												</div>
+											</div>
+											<div class="w-20 flex-shrink-0 text-center text-gray-600">
+												{formatSizeInMB(item.email.sizeEstimate)}
+											</div>
+											<div class="w-20 flex-shrink-0 text-right text-gray-600">
+												{formatDate(item.email.date)}
+											</div>
 										</div>
-									</div>
-									<div class="w-20 flex-shrink-0 text-center text-gray-600">
-										{formatSizeInMB(email.sizeEstimate)}
-									</div>
-									<div class="w-20 flex-shrink-0 text-right text-gray-600">
-										{formatDate(email.date)}
-									</div>
+									{/if}
 								</div>
 							{/each}
 						</div>
